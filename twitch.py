@@ -1271,6 +1271,8 @@ class Twitch:
                     session.request(method, url, **kwargs)
                 )
                 assert response is not None
+                if report_recovery := getattr(self.gui, "report_network_recovery", None):
+                    report_recovery(str(url))
                 logger.debug(f"Response: {response.status}: {response}")
                 if response.status < 500:
                     # pre-read the response to avoid getting errors outside of the context manager
@@ -1285,6 +1287,8 @@ class Twitch:
                 aiohttp.ClientConnectionError, asyncio.TimeoutError, aiohttp.ClientPayloadError
             ):
                 # connection problems, retry
+                if report_issue := getattr(self.gui, "report_network_issue", None):
+                    report_issue(str(url))
                 if backoff.steps > 1:
                     # just so that quick retries that sometimes happen, aren't shown
                     self.print(

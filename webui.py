@@ -82,7 +82,9 @@ def _campaign_json(campaign: DropsCampaign) -> dict[str, Any]:
     }
 
 
-def _channel_json(channel: Channel, watching_id: int | None) -> dict[str, Any]:
+def _channel_json(
+    channel: Channel, watching_id: int | None, *, watchable: bool
+) -> dict[str, Any]:
     game = channel.game
     stream = getattr(channel, "_stream", None)
     return {
@@ -93,6 +95,7 @@ def _channel_json(channel: Channel, watching_id: int | None) -> dict[str, Any]:
         "online": channel.online,
         "pending": channel.pending_online,
         "watching": channel.id == watching_id,
+        "watchable": watchable,
         "game": game.name if game is not None else None,
         "viewers": channel.viewers,
         "dropsEnabled": channel.drops_enabled,
@@ -348,6 +351,7 @@ class WebUI:
         self.can_logout = False
         self.messages: deque[str] = deque(maxlen=250)
         self.notifications: deque[dict[str, str]] = deque(maxlen=20)
+        self._network_failures: dict[str, int] = {}
         self.status = StatusView(self)
         self.websockets = WebsocketView(self)
         self.login = LoginView(self)
@@ -378,7 +382,14 @@ class WebUI:
         settings = self._twitch.settings
         active_drop = self.progress.drop
         campaigns = [_campaign_json(campaign) for campaign in self._twitch.inventory]
-        channels = [_channel_json(channel, watching_id) for channel in self._twitch.channels.values()]
+        channels = [
+            _channel_json(
+                channel,
+                watching_id,
+                watchable=self._twitch.can_watch(channel),
+            )
+            for channel in self._twitch.channels.values()
+        ]
         return {
             "revision": self._revision,
             "status": self.status_text,
@@ -395,6 +406,9 @@ class WebUI:
             ],
             "messages": list(self.messages),
             "notifications": list(self.notifications),
+            "networkIssues": sorted(
+                host for host, failures in self._network_failures.items() if failures >= 2
+            ),
             "games": sorted(self.settings.games),
             "settings": {
                 "priority": list(settings.priority),
@@ -557,6 +571,8 @@ class WebUI:
             raise web.HTTPBadRequest(text="Invalid channel ID") from exc
         if channel_id not in self._twitch.channels:
             raise web.HTTPNotFound(text="Channel not found")
+        if not self._twitch.can_watch(self._twitch.channels[channel_id]):
+            raise web.HTTPConflict(text="Channel is not eligible for an active drop")
         self.channels.selected_id = channel_id
         self._twitch.change_state(State.CHANNEL_SWITCH)
         return web.json_response({"ok": True})
@@ -656,5 +672,17 @@ class WebUI:
         self.tray.update_title(None)
 
     def print(self, message: str) -> None:
+        logger.info("%s", message)
         self.messages.append(message)
         self.changed()
+
+    def report_network_issue(self, url: str) -> None:
+        if host := URL(url).host:
+            failures = self._network_failures.get(host, 0) + 1
+            self._network_failures[host] = failures
+            if failures == 2:
+                self.changed()
+
+    def report_network_recovery(self, url: str) -> None:
+        if (host := URL(url).host) and self._network_failures.pop(host, 0) >= 2:
+            self.changed()

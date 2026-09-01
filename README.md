@@ -122,6 +122,32 @@ docker compose down
 
 Authorization cookies and settings live in the `tdm-data` volume and survive container updates.
 
+### DNS blockers and firewalls
+
+Twitch Drops Miner Next shows a dashboard warning after repeated requests to a Twitch hostname
+fail. This is often caused by network-wide blocking rather than a miner bug. In particular,
+`spade.twitch.tv` carries the watch heartbeat used for drop progress, so blocking it can leave a
+drop stuck at the same percentage.
+
+Prefer allowlisting only the exact hostnames shown in the warning:
+
+- **Pi-hole:** add each hostname as an exact allowlist entry under Group Management > Domains, or
+  run `pihole allow spade.twitch.tv` on the Pi-hole host.
+- **AdGuard Home:** add `@@||spade.twitch.tv^` under Filters > Custom filtering rules. Add the
+  other hostnames shown by the dashboard in the same form.
+
+Alternatively, give only this container an unfiltered DNS resolver. Add `--dns 1.1.1.1` to the
+`docker run` command, or add this to the `miner` service in `compose.yaml`:
+
+```yaml
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+```
+
+Restart the container after changing DNS. A per-container override bypasses home DNS filtering
+for every hostname requested by this container; an exact allowlist entry is the narrower option.
+
 ## Development
 
 The modern path deliberately uses the dependencies already central to the miner:

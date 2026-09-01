@@ -50,6 +50,15 @@
         <a class="button primary" id="activation-link" target="_blank" rel="noreferrer">Open Twitch</a>
       </div>
 
+      <aside class="network-alert hidden" id="network-alert" role="alert">
+        <span class="network-alert-mark" aria-hidden="true">!</span>
+        <div>
+          <strong>Twitch service blocked or unreachable</strong>
+          <p>Repeated requests to <code id="network-hosts"></code> failed. A DNS blocker, firewall, or network issue may stop drop progress.</p>
+        </div>
+        <a href="https://github.com/0libote/TwitchDropsMiner#dns-blockers-and-firewalls" target="_blank" rel="noreferrer">How to fix it</a>
+      </aside>
+
       <section id="overview" class="section">
         <div class="status-card">
           <div class="status-copy">

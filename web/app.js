@@ -66,6 +66,10 @@ function render(next) {
   $("#pause-button").dataset.action = canControl && idle ? "reload" : "pause";
   $("#game-options").innerHTML = next.games.map(game => `<option value="${esc(game)}"></option>`).join("");
 
+  const networkIssues = next.networkIssues || [];
+  $("#network-alert").classList.toggle("hidden", !networkIssues.length);
+  $("#network-hosts").textContent = networkIssues.join(", ");
+
   renderCampaigns();
   renderChannels();
   renderLog();
@@ -97,7 +101,7 @@ function renderChannels() {
       <td>${esc(c.game || "—")}</td>
       <td>${c.viewers == null ? "—" : Number(c.viewers).toLocaleString()}</td>
       <td><span class="${c.dropsEnabled ? "live" : "muted"}">${c.dropsEnabled ? "Enabled" : "Unavailable"}</span></td>
-      <td><button class="button ghost watch" data-channel="${c.id}" ${!c.online || c.watching ? "disabled" : ""}>${c.watching ? "Watching" : "Switch"}</button></td>
+      <td><button class="button ghost watch" data-channel="${c.id}" ${!c.watchable || c.watching ? "disabled" : ""}>${c.watching ? "Watching" : c.watchable ? "Switch" : "Unavailable"}</button></td>
     </tr>`).join("") : `<tr><td colspan="5" class="empty">No eligible channels yet.</td></tr>`;
   $$(".watch").forEach(button => button.addEventListener("click", () => run(`/api/channels/${button.dataset.channel}`, {method: "POST"}, "Switch requested")));
 }

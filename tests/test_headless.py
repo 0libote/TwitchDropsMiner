@@ -38,12 +38,21 @@ class HeadlessImportTests(unittest.TestCase):
             inventory=[],
             channels={},
             settings=settings,
+            can_watch=Mock(),
         )
         ui = WebUI(twitch)
         snapshot = ui.snapshot()
         self.assertEqual(snapshot["campaigns"], [])
         self.assertEqual(snapshot["channels"], [])
+        self.assertEqual(snapshot["networkIssues"], [])
         self.assertEqual(snapshot["summary"]["activeCampaigns"], 0)
+
+        ui.report_network_issue("https://spade.twitch.tv/track")
+        self.assertEqual(ui.snapshot()["networkIssues"], [])
+        ui.report_network_issue("https://spade.twitch.tv/track")
+        self.assertEqual(ui.snapshot()["networkIssues"], ["spade.twitch.tv"])
+        ui.report_network_recovery("https://spade.twitch.tv/track")
+        self.assertEqual(ui.snapshot()["networkIssues"], [])
 
     def test_remote_bind_gets_an_access_token(self) -> None:
         from webui import WebUI
@@ -62,8 +71,37 @@ class HeadlessImportTests(unittest.TestCase):
         ui.tray.notify("Claimed", "Drop")
         self.assertEqual(list(ui.notifications), [{"title": "Drop", "message": "Claimed"}])
 
+    def test_web_activity_is_written_to_the_process_log(self) -> None:
+        from webui import WebUI
+
+        ui = WebUI(SimpleNamespace())
+        with self.assertLogs("TwitchDrops", level="INFO") as captured:
+            ui.print("Watching ExampleChannel")
+        self.assertEqual(captured.output, ["INFO:TwitchDrops:Watching ExampleChannel"])
+
 
 class WebSettingsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_channel_switch_rejects_ineligible_channel(self) -> None:
+        from webui import WebUI
+
+        channel = SimpleNamespace(id=7)
+        twitch = SimpleNamespace(
+            channels={7: channel},
+            can_watch=Mock(return_value=False),
+            change_state=Mock(),
+        )
+        ui = WebUI(twitch)
+        request = SimpleNamespace(match_info={"channel_id": "7"})
+
+        with self.assertRaises(web.HTTPConflict):
+            await ui._switch_channel(request)
+        twitch.change_state.assert_not_called()
+
+        twitch.can_watch.return_value = True
+        response = await ui._switch_channel(request)
+        self.assertEqual(response.status, 200)
+        twitch.change_state.assert_called_once()
+
     async def test_proxy_requires_a_host_and_port(self) -> None:
         from webui import WebUI
 
