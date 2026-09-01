@@ -8,8 +8,12 @@ from types import SimpleNamespace
 class HeadlessImportTests(unittest.TestCase):
     def test_engine_import_does_not_load_tk_gui(self) -> None:
         sys.modules.pop("gui", None)
+        sys.modules.pop("tkinter", None)
+        sys.modules.pop("PIL", None)
         __import__("twitch")
         self.assertNotIn("gui", sys.modules)
+        self.assertNotIn("tkinter", sys.modules)
+        self.assertNotIn("PIL", sys.modules)
 
     def test_web_snapshot_starts_empty(self) -> None:
         from utils import AwaitableValue
