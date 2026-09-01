@@ -29,13 +29,15 @@ PYZTypeEXE: TypeAlias = "abc.Iterable[_TOCTuple] | PYZ | Splash"
 # Simple configuration
 upx: bool = False  # Use UPX compression (reduces file size, may increase AV detections)
 console: bool = False  # True if you'd want to add a console window (useful for debugging)
-one_dir: bool = False  # True for one-dir, False for one-file
+one_dir: bool = True  # Faster startup and fewer antivirus false positives than one-file builds
 optimize: int | None = None  # -1/None/0=none, 1=remove asserts, 2=also remove docstrings
-app_name: str = "Twitch Drops Miner (by DevilXD)"
+app_name: str = "Twitch Drops Miner Next"
 
 
 # (source_path, dest_path, required)
 to_add: list[tuple[Path, str, bool]] = [
+    # modern dashboard
+    (Path("web"), "./web", True),
     # icon files
     (Path("icons/pickaxe.ico"), "./icons", True),
     (Path("icons/active.ico"), "./icons", True),
@@ -155,5 +157,5 @@ if sys.platform == "darwin":
         source,
         name=f'{app_name}.app',
         icon="icons/pickaxe.ico",
-        bundle_identifier='com.twitchdrops.miner',
+        bundle_identifier='dev.0libote.tdmnext',
     )

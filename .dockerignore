@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+OG
+env
+cache
+__pycache__
+*.pyc
+*.jar
+*.log
+settings.json

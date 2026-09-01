@@ -12,7 +12,7 @@ from typing import Any, Dict, Literal, NewType, TYPE_CHECKING
 
 from yarl import URL
 
-from version import __version__
+from fork_version import __version__
 
 if TYPE_CHECKING:
     from collections import abc  # noqa
@@ -92,6 +92,19 @@ else:
     if SELF_PATH.stem == "pyinstaller" or SELF_PATH.name == "gui.py":
         SELF_PATH = Path(__file__).with_name("main.py").resolve()
 WORKING_DIR = SELF_PATH.parent
+# Persistent state lives outside packaged application bundles. Source runs keep
+# the upstream behavior unless TDM_DATA_DIR is explicitly set (as in Docker).
+if data_dir := os.environ.get("TDM_DATA_DIR"):
+    DATA_DIR = Path(data_dir).expanduser().resolve()
+elif IS_PACKAGED and sys.platform == "win32":
+    DATA_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home()), "Twitch Drops Miner Next")
+elif IS_PACKAGED and sys.platform == "darwin":
+    DATA_DIR = Path.home() / "Library/Application Support/Twitch Drops Miner Next"
+elif IS_PACKAGED:
+    DATA_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"), "tdm-next")
+else:
+    DATA_DIR = WORKING_DIR
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 # Development paths
 VENV_PATH = Path(WORKING_DIR, "env")
 SITE_PACKAGES_PATH = Path(VENV_PATH, SYS_SITE_PACKAGES)
@@ -100,13 +113,13 @@ SCRIPTS_PATH = Path(VENV_PATH, SYS_SCRIPTS)
 # NOTE: These don't have to be available to the end-user, so the path points to the internal dir
 LANG_PATH = _resource_path("lang")
 # Other Paths
-LOG_PATH = Path(WORKING_DIR, "log.txt")
-DUMP_PATH = Path(WORKING_DIR, "dump.dat")
-LOCK_PATH = Path(WORKING_DIR, "lock.file")
-CACHE_PATH = Path(WORKING_DIR, "cache")
+LOG_PATH = Path(DATA_DIR, "log.txt")
+DUMP_PATH = Path(DATA_DIR, "dump.dat")
+LOCK_PATH = Path(DATA_DIR, "lock.file")
+CACHE_PATH = Path(DATA_DIR, "cache")
 CACHE_DB = Path(CACHE_PATH, "mapping.json")
-COOKIES_PATH = Path(WORKING_DIR, "cookies.jar")
-SETTINGS_PATH = Path(WORKING_DIR, "settings.json")
+COOKIES_PATH = Path(DATA_DIR, "cookies.jar")
+SETTINGS_PATH = Path(DATA_DIR, "settings.json")
 # Typing
 JsonType = Dict[str, Any]
 URLType = NewType("URLType", str)
@@ -129,7 +142,7 @@ PING_TIMEOUT = timedelta(seconds=10)
 ONLINE_DELAY = timedelta(seconds=120)
 WATCH_INTERVAL = timedelta(seconds=59)
 # Strings
-WINDOW_TITLE = f"Twitch Drops Miner v{__version__} (by DevilXD)"
+WINDOW_TITLE = f"Twitch Drops Miner Next v{__version__}"
 # Logging
 LOGGING_LEVELS = {
     0: logging.ERROR,

@@ -1,0 +1,44 @@
+name: Upstream watch
+
+on:
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch DevilXD upstream
+        run: |
+          git remote add upstream https://github.com/DevilXD/TwitchDropsMiner.git
+          git fetch upstream master
+      - name: Build change report
+        id: upstream
+        shell: bash
+        run: |
+          if python scripts/check_upstream.py --check --output upstream-report.md; then
+            echo "updates=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "updates=true" >> "$GITHUB_OUTPUT"
+          fi
+          cat upstream-report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Create or update tracking issue
+        if: steps.upstream.outputs.updates == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          issue="$(gh issue list --state open --search 'Upstream changes available in:title' --json number --jq '.[0].number')"
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body-file upstream-report.md
+          else
+            gh issue create --title "Upstream changes available" --body-file upstream-report.md
+          fi

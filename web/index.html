@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0d0d0f">
+  <title>Twitch Drops Miner Next</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <a class="brand" href="#overview" aria-label="Twitch Drops Miner Next">
+        <span class="brand-mark">T</span>
+        <span><b>TDM</b><small>NEXT</small></span>
+      </a>
+      <nav aria-label="Dashboard sections">
+        <a class="active" href="#overview">Overview</a>
+        <a href="#campaigns">Campaigns</a>
+        <a href="#channels">Channels</a>
+        <a href="#settings">Settings</a>
+        <a href="#activity">Activity</a>
+      </nav>
+      <div class="rail-foot">
+        <span class="pulse" id="connection-dot"></span>
+        <span id="connection-label">Connecting</span>
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">MINER CONTROL</p>
+          <h1>Good drops, quietly handled.</h1>
+        </div>
+        <div class="header-actions">
+          <button class="button ghost" data-action="pause" id="pause-button">Pause</button>
+          <button class="button primary" data-action="reload" id="refresh-button">Refresh inventory</button>
+        </div>
+      </header>
+
+      <div class="login-callout hidden" id="login-callout">
+        <div>
+          <p class="eyebrow">TWITCH AUTHORIZATION</p>
+          <h2>Connect your Twitch account</h2>
+          <p>Open Twitch, enter the one-time code, then return here. Your password never passes through this dashboard.</p>
+        </div>
+        <code id="activation-code">—</code>
+        <a class="button primary" id="activation-link" target="_blank" rel="noreferrer">Open Twitch</a>
+      </div>
+
+      <section id="overview" class="section">
+        <div class="status-card">
+          <div class="status-copy">
+            <div class="status-line"><span class="state-dot"></span><span id="status">Starting</span></div>
+            <p class="eyebrow">CURRENT DROP</p>
+            <h2 id="drop-title">Waiting for inventory</h2>
+            <p class="muted" id="drop-meta">The miner will select the best eligible campaign.</p>
+            <div class="progress-track"><span id="drop-progress"></span></div>
+            <div class="progress-meta"><span id="drop-percent">0%</span><span id="drop-remaining">—</span></div>
+          </div>
+          <div class="status-art" aria-hidden="true"><span></span></div>
+        </div>
+
+        <div class="metric-grid">
+          <article><span>Active campaigns</span><strong id="metric-active">0</strong><small id="metric-total">0 discovered</small></article>
+          <article><span>Completed</span><strong id="metric-completed">0</strong><small>campaigns finished</small></article>
+          <article><span>Live channels</span><strong id="metric-channels">0</strong><small>eligible streams</small></article>
+          <article><span>Connection</span><strong id="metric-sockets">—</strong><small>event sockets</small></article>
+        </div>
+      </section>
+
+      <section id="campaigns" class="section">
+        <div class="section-heading"><div><p class="eyebrow">INVENTORY</p><h2>Campaigns</h2></div><div class="filters"><button class="chip active" data-filter="all">All</button><button class="chip" data-filter="active">Active</button><button class="chip" data-filter="upcoming">Upcoming</button><button class="chip" data-filter="finished">Finished</button></div></div>
+        <div class="campaign-grid" id="campaign-grid"><div class="empty">Campaigns will appear after Twitch authorization.</div></div>
+      </section>
+
+      <section id="channels" class="section">
+        <div class="section-heading"><div><p class="eyebrow">STREAM DISCOVERY</p><h2>Channels</h2></div><span class="muted" id="channel-count">0 available</span></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Channel</th><th>Game</th><th>Viewers</th><th>Drops</th><th></th></tr></thead><tbody id="channel-table"><tr><td colspan="5" class="empty">No eligible channels yet.</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <section id="settings" class="section">
+        <div class="section-heading"><div><p class="eyebrow">PREFERENCES</p><h2>Settings</h2></div><button class="button primary" id="save-settings">Save changes</button></div>
+        <form class="settings-grid" id="settings-form">
+          <label><span>Mining order</span><select name="priorityMode"><option value="PRIORITY_ONLY">Priority list only</option><option value="ENDING_SOONEST">Ending soonest</option><option value="LOW_AVBL_FIRST">Lowest availability</option></select><small>How unprioritized campaigns are ordered.</small></label>
+          <label><span>Connection quality</span><input name="connectionQuality" type="range" min="1" max="6" value="1"><small>Higher values allow slower networks more time.</small></label>
+          <div class="setting-card wide">
+            <span>Priority games</span>
+            <small>Games at the front are mined first. Use the arrows to change the order.</small>
+            <div class="game-list" id="priority-list"></div>
+            <div class="game-add"><input id="priority-game" list="game-options" placeholder="Search discovered games"><button class="button ghost" type="button" data-add-game="priority">Add</button></div>
+          </div>
+          <div class="setting-card wide">
+            <span>Excluded games</span>
+            <small>Campaigns for these games will never be selected.</small>
+            <div class="game-list" id="exclude-list"></div>
+            <div class="game-add"><input id="exclude-game" list="game-options" placeholder="Search discovered games"><button class="button ghost" type="button" data-add-game="exclude">Add</button></div>
+          </div>
+          <datalist id="game-options"></datalist>
+          <label class="toggle"><input name="enableBadgesEmotes" type="checkbox"><span>Include badge and emote campaigns</span></label>
+          <label class="toggle"><input name="availableDropsCheck" type="checkbox"><span>Verify drops on each channel</span></label>
+        </form>
+      </section>
+
+      <section id="activity" class="section">
+        <div class="section-heading"><div><p class="eyebrow">EVENT LOG</p><h2>Activity</h2></div><div class="header-actions"><button class="button ghost" data-action="logout" id="logout-button">Disconnect Twitch</button><button class="button ghost danger" data-action="shutdown">Shut down</button></div></div>
+        <div class="log" id="activity-log"><p>Waiting for miner events…</p></div>
+      </section>
+
+      <footer>
+        <span>Twitch Drops Miner Next</span>
+        <span>Built from <a href="https://github.com/DevilXD/TwitchDropsMiner" target="_blank" rel="noreferrer">DevilXD/TwitchDropsMiner</a></span>
+      </footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

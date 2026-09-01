@@ -17,6 +17,9 @@ log.txt
 /dump.dat
 /lock.file
 settings.json
+/upstream-report.md
+.env
+/OG/
 /lang/English.json
 # AppImage
 /AppDir
