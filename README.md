@@ -73,10 +73,10 @@ Useful options:
 
 ## Desktop builds
 
-Until the first named prerelease, open the latest successful
-[Validate and build](https://github.com/0libote/TwitchDropsMiner/actions/workflows/ci.yml) run and
-download the archive for Windows x64, macOS Apple Silicon, or macOS Intel from its **Artifacts**
-section. Each archive has already been started and health-checked on the matching hosted runner.
+Download the latest version from
+[GitHub Releases](https://github.com/0libote/TwitchDropsMiner/releases). Choose the archive for
+Windows x64, macOS Apple Silicon, or macOS Intel. Each archive is started and health-checked on
+the matching hosted runner before publication.
 
 Pushing a `v*` version tag publishes those same tested archives as a GitHub prerelease. The apps
 are not code-signed or notarized yet, so Windows SmartScreen or macOS Gatekeeper may show an
@@ -85,7 +85,20 @@ identity are final.
 
 ## Run with Docker
 
-Choose a long random dashboard token, then start the service:
+Published images support `linux/amd64` and `linux/arm64`. Choose a long random dashboard token,
+then run the latest image:
+
+```bash
+docker run -d \
+  --name twitch-drops-miner-next \
+  --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  -e TDM_ACCESS_TOKEN="replace-with-a-long-random-value" \
+  -v tdm-data:/data \
+  ghcr.io/0libote/twitchdropsminer:latest
+```
+
+To build directly from a clone instead:
 
 ```bash
 export TDM_ACCESS_TOKEN="replace-with-a-long-random-value"
