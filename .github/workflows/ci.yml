@@ -35,10 +35,24 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
+          load: true
           push: false
           tags: tdm-next:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Smoke-test the running container
+        run: |
+          docker run --detach --rm --name tdm-next-smoke \
+            --env TDM_ACCESS_TOKEN=ci-smoke-token \
+            --publish 127.0.0.1:18766:8080 \
+            tdm-next:test
+          trap 'docker stop tdm-next-smoke' EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:18766/healthz && exit 0
+            sleep 1
+          done
+          docker logs tdm-next-smoke
+          exit 1
 
   desktop:
     if: github.event_name != 'pull_request'
@@ -62,6 +76,12 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt pyinstaller
       - run: pyinstaller --clean --noconfirm build.spec
+      - name: Smoke-test Windows package
+        if: runner.os == 'Windows'
+        run: python scripts/smoke_package.py "dist/Twitch Drops Miner Next/Twitch Drops Miner Next.exe"
+      - name: Smoke-test macOS package
+        if: runner.os == 'macOS'
+        run: python scripts/smoke_package.py "dist/Twitch Drops Miner Next.app/Contents/MacOS/Twitch Drops Miner Next"
       - name: Stage Windows artifact
         if: runner.os == 'Windows'
         shell: pwsh
