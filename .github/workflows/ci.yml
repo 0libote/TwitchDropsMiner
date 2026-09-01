@@ -144,7 +144,17 @@ jobs:
       - name: Download tested desktop archives
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir artifacts
+        run: |
+          for artifact in \
+            Twitch-Drops-Miner-Next-Windows-x64 \
+            Twitch-Drops-Miner-Next-macOS-arm64 \
+            Twitch-Drops-Miner-Next-macOS-x64
+          do
+            gh run download "$GITHUB_RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --name "$artifact" \
+              --dir "artifacts/$artifact"
+          done
       - name: Create GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
