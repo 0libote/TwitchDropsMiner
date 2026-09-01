@@ -82,6 +82,8 @@ class WebSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings.proxy, URL("http://localhost:3128"))
         with self.assertRaises(web.HTTPBadRequest):
             await ui._update_settings(Request("missing-port"))  # type: ignore[arg-type]
+        with self.assertRaises(web.HTTPBadRequest):
+            await ui._update_settings(Request("http://localhost"))  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

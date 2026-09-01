@@ -1549,7 +1549,7 @@ def proxy_validate(entry: PlaceholderEntry, settings: Settings) -> bool:
     raw_url = entry.get().strip()
     entry.replace(raw_url)
     url = URL(raw_url)
-    valid = url.host is not None and url.port is not None
+    valid = url.host is not None and url.explicit_port is not None
     if not valid:
         entry.clear()
         url = URL()

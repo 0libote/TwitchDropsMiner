@@ -588,7 +588,9 @@ class WebUI:
         if "proxy" in payload:
             proxy = URL(str(payload["proxy"]).strip())
             try:
-                valid_proxy = not proxy or (proxy.host is not None and proxy.port is not None)
+                valid_proxy = not proxy or (
+                    proxy.host is not None and proxy.explicit_port is not None
+                )
             except ValueError:
                 valid_proxy = False
             if not valid_proxy:
