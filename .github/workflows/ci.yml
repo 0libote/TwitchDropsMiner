@@ -86,17 +86,48 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item release -ItemType Directory
-          Copy-Item "dist/Twitch Drops Miner Next" release/ -Recurse
-          Copy-Item manual.txt,LICENSE,NOTICE.md "release/Twitch Drops Miner Next/"
+          New-Item "release/${{ matrix.artifact }}" -ItemType Directory
+          Copy-Item "dist/Twitch Drops Miner Next" "release/${{ matrix.artifact }}/" -Recurse
+          Copy-Item manual.txt,LICENSE,NOTICE.md "release/${{ matrix.artifact }}/"
+          Compress-Archive -Path "release/${{ matrix.artifact }}" -DestinationPath "release/${{ matrix.artifact }}.zip"
       - name: Stage macOS artifact
         if: runner.os == 'macOS'
         run: |
-          mkdir release
-          cp -R "dist/Twitch Drops Miner Next.app" release/
-          cp manual.txt LICENSE NOTICE.md release/
+          mkdir -p "release/${{ matrix.artifact }}"
+          cp -R "dist/Twitch Drops Miner Next.app" "release/${{ matrix.artifact }}/"
+          cp manual.txt LICENSE NOTICE.md "release/${{ matrix.artifact }}/"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "release/${{ matrix.artifact }}" \
+            "release/${{ matrix.artifact }}.zip"
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
-          path: release
+          path: release/${{ matrix.artifact }}.zip
           if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Publish prerelease
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [test, docker, desktop]
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download tested desktop archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir artifacts
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t archives < <(find artifacts -type f -name '*.zip' -print)
+          test "${#archives[@]}" -eq 3
+          gh release create "$GITHUB_REF_NAME" "${archives[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --prerelease \
+            --generate-notes \
+            --title "Twitch Drops Miner Next $GITHUB_REF_NAME"

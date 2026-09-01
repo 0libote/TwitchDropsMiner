@@ -71,6 +71,18 @@ Useful options:
 --log                Write log.txt in the data directory
 ```
 
+## Desktop builds
+
+Until the first named prerelease, open the latest successful
+[Validate and build](https://github.com/0libote/TwitchDropsMiner/actions/workflows/ci.yml) run and
+download the archive for Windows x64, macOS Apple Silicon, or macOS Intel from its **Artifacts**
+section. Each archive has already been started and health-checked on the matching hosted runner.
+
+Pushing a `v*` version tag publishes those same tested archives as a GitHub prerelease. The apps
+are not code-signed or notarized yet, so Windows SmartScreen or macOS Gatekeeper may show an
+unknown-publisher warning. Signing should be added only after the product name and publisher
+identity are final.
+
 ## Run with Docker
 
 Choose a long random dashboard token, then start the service:
