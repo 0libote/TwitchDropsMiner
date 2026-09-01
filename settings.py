@@ -36,7 +36,7 @@ default_settings: SettingsFile = {
     "tray_notifications": True,
     "enable_badges_emotes": False,
     "available_drops_check": False,
-    "priority_mode": PriorityMode.PRIORITY_ONLY,
+    "priority_mode": PriorityMode.ENDING_SOONEST,
 }
 
 
