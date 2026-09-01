@@ -6,6 +6,7 @@ let filter = "all";
 let settingsLoaded = false;
 let priorityGames = [];
 let excludedGames = [];
+let toastTimer = null;
 
 function formatMinutes(minutes) {
   if (minutes == null) return "—";
@@ -14,11 +15,13 @@ function formatMinutes(minutes) {
   return hours ? `${hours}h ${mins}m remaining` : `${mins}m remaining`;
 }
 
-function toast(message) {
+function toast(message, error = false) {
   const node = $("#toast");
+  clearTimeout(toastTimer);
   node.textContent = message;
+  node.classList.toggle("error", error);
   node.classList.add("show");
-  setTimeout(() => node.classList.remove("show"), 2200);
+  toastTimer = setTimeout(() => node.classList.remove("show"), 2200);
 }
 
 async function request(url, options = {}) {
@@ -32,6 +35,7 @@ function render(next) {
   $("#connection-dot").classList.add("live");
   $("#connection-label").textContent = "Live";
   $("#status").textContent = next.status || "Running";
+  $(".state-dot").dataset.state = next.activity || "idle";
 
   const drop = next.activeDrop;
   $("#drop-title").textContent = drop?.rewards || "Waiting for the next eligible drop";
@@ -53,12 +57,13 @@ function render(next) {
     $("#activation-code").textContent = login.activationCode;
     $("#activation-link").href = login.activationUrl;
   }
-  $("#logout-button").disabled = !next.canLogout;
-  $("#refresh-button").disabled = !next.canLogout;
+  const canControl = Boolean(next.canLogout);
+  $("#logout-button").disabled = !canControl;
+  $("#refresh-button").disabled = !canControl;
   const idle = next.activity === "idle";
-  $("#pause-button").disabled = !next.canLogout;
-  $("#pause-button").textContent = idle ? "Resume" : "Pause";
-  $("#pause-button").dataset.action = idle ? "reload" : "pause";
+  $("#pause-button").disabled = !canControl;
+  $("#pause-button").textContent = canControl && idle ? "Resume" : "Pause";
+  $("#pause-button").dataset.action = canControl && idle ? "reload" : "pause";
   $("#game-options").innerHTML = next.games.map(game => `<option value="${esc(game)}"></option>`).join("");
 
   renderCampaigns();
@@ -99,7 +104,11 @@ function renderChannels() {
 
 function renderLog() {
   const lines = [...state.messages].reverse();
-  $("#activity-log").innerHTML = lines.length ? lines.map(line => `<p>${esc(line)}</p>`).join("") : "<p>Waiting for miner events…</p>";
+  const notifications = (state.notifications || []).map(item => `<p class="notification"><strong>${esc(item.title)}</strong> ${esc(item.message)}</p>`);
+  $("#activity-log").innerHTML = notifications.length || lines.length ? [
+    ...notifications,
+    ...lines.map(line => `<p>${esc(line)}</p>`),
+  ].join("") : "<p>Waiting for miner events…</p>";
 }
 
 function loadSettings() {
@@ -107,12 +116,20 @@ function loadSettings() {
   const values = state.settings;
   form.elements.priorityMode.value = values.priorityMode;
   form.elements.connectionQuality.value = values.connectionQuality;
+  form.elements.proxy.value = values.proxy;
+  form.elements.trayNotifications.checked = values.trayNotifications;
   form.elements.enableBadgesEmotes.checked = values.enableBadgesEmotes;
   form.elements.availableDropsCheck.checked = values.availableDropsCheck;
   priorityGames = [...values.priority];
   excludedGames = [...values.exclude];
   renderGameSettings();
+  updateQualityValue();
   settingsLoaded = true;
+}
+
+function updateQualityValue() {
+  const input = $("#connection-quality");
+  $("#quality-value").textContent = `${input.value} / ${input.max}`;
 }
 
 function renderGameSettings() {
@@ -135,7 +152,7 @@ function addGame(list) {
 
 async function run(url, options, success) {
   try { await request(url, options); toast(success); }
-  catch (error) { toast(error.message || "Request failed"); }
+  catch (error) { toast(error.message || "Request failed", true); }
 }
 
 $$('[data-action]').forEach(button => button.addEventListener("click", () => run(`/api/actions/${button.dataset.action}`, {method: "POST"}, "Request accepted")));
@@ -144,17 +161,30 @@ $$('[data-filter]').forEach(button => button.addEventListener("click", () => {
   $$('[data-filter]').forEach(item => item.classList.toggle("active", item === button));
   renderCampaigns();
 }));
-$("#save-settings").addEventListener("click", async () => {
+$("#settings-form").addEventListener("submit", async event => {
+  event.preventDefault();
   const form = $("#settings-form");
-  await run("/api/settings", {method: "PUT", body: JSON.stringify({
-    priorityMode: form.elements.priorityMode.value,
-    connectionQuality: Number(form.elements.connectionQuality.value),
-    priority: priorityGames,
-    exclude: excludedGames,
-    enableBadgesEmotes: form.elements.enableBadgesEmotes.checked,
-    availableDropsCheck: form.elements.availableDropsCheck.checked,
-  })}, "Settings saved");
+  const button = $("#save-settings");
+  button.disabled = true;
+  try {
+    await request("/api/settings", {method: "PUT", body: JSON.stringify({
+      priorityMode: form.elements.priorityMode.value,
+      connectionQuality: Number(form.elements.connectionQuality.value),
+      proxy: form.elements.proxy.value,
+      priority: priorityGames,
+      exclude: excludedGames,
+      trayNotifications: form.elements.trayNotifications.checked,
+      enableBadgesEmotes: form.elements.enableBadgesEmotes.checked,
+      availableDropsCheck: form.elements.availableDropsCheck.checked,
+    })});
+    toast("Settings saved");
+  } catch (error) {
+    toast(error.message || "Unable to save settings", true);
+  } finally {
+    button.disabled = false;
+  }
 });
+$("#connection-quality").addEventListener("input", updateQualityValue);
 $$('[data-add-game]').forEach(button => button.addEventListener("click", () => addGame(button.dataset.addGame)));
 [$("#priority-game"), $("#exclude-game")].forEach(input => input.addEventListener("keydown", event => {
   if (event.key === "Enter") { event.preventDefault(); addGame(input.id.split("-")[0]); }

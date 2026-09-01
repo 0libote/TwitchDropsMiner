@@ -153,6 +153,7 @@ class LoginView(_Reactive):
     async def ask_enter_code(self, page_url: URL, user_code: str) -> None:
         if page_url.scheme != "https" or page_url.host not in {"twitch.tv", "www.twitch.tv"}:
             raise ValueError("Twitch returned an invalid device activation URL")
+        self.manager.status_text = "Waiting for Twitch authorization"
         self.manager.login_state.update(
             status="Authorization required",
             activationUrl=str(page_url),
@@ -207,6 +208,8 @@ class TrayView(_Reactive):
         self.changed()
 
     def notify(self, message: str, title: str) -> None:
+        if not self.manager._twitch.settings.tray_notifications:
+            return
         self.manager.notifications.appendleft({"title": title, "message": message})
         self.changed()
 
@@ -583,7 +586,14 @@ class WebUI:
             if json_name in payload:
                 setattr(settings, attr_name, bool(payload[json_name]))
         if "proxy" in payload:
-            settings.proxy = URL(str(payload["proxy"]).strip())
+            proxy = URL(str(payload["proxy"]).strip())
+            try:
+                valid_proxy = not proxy or (proxy.host is not None and proxy.port is not None)
+            except ValueError:
+                valid_proxy = False
+            if not valid_proxy:
+                raise web.HTTPBadRequest(text="Proxy must include a host and port")
+            settings.proxy = proxy
         settings.save()
         self._twitch.change_state(State.GAMES_UPDATE)
         self.changed()
