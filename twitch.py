@@ -77,6 +77,11 @@ class SkipExtraJsonDecoder(json.JSONDecoder):
 SAFE_LOADS = lambda s: json.loads(s, cls=SkipExtraJsonDecoder)
 
 
+def _save_authenticated_cookies(cookie_jar: aiohttp.CookieJar, client_url: URL) -> None:
+    if "auth-token" in cookie_jar.filter_cookies(client_url):
+        cookie_jar.save(COOKIES_PATH)
+
+
 class _AuthState:
     def __init__(self, twitch: Twitch):
         self._twitch: Twitch = twitch
@@ -404,6 +409,7 @@ class _AuthState:
                             logger.info("Restored session is invalid")
                             assert client_info.CLIENT_URL.host is not None
                             jar.clear_domain(client_info.CLIENT_URL.host)
+                            COOKIES_PATH.unlink(missing_ok=True)
                             continue
                         elif response.status == 200:
                             validate_response = await response.json()
@@ -523,7 +529,7 @@ class Twitch:
             for cookie_key, cookie in list(cookie_jar._cookies.items()):
                 if not cookie:
                     del cookie_jar._cookies[cookie_key]
-            cookie_jar.save(COOKIES_PATH)
+            _save_authenticated_cookies(cookie_jar, self._client_type.CLIENT_URL)
             await self._session.close()
             self._session = None
         self._drops.clear()

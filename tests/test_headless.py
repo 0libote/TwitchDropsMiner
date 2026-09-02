@@ -79,6 +79,18 @@ class HeadlessImportTests(unittest.TestCase):
             ui.print("Watching ExampleChannel")
         self.assertEqual(captured.output, ["INFO:TwitchDrops:Watching ExampleChannel"])
 
+    def test_only_authenticated_cookie_jars_are_saved(self) -> None:
+        from twitch import _save_authenticated_cookies
+
+        cookie_jar = Mock()
+        cookie_jar.filter_cookies.return_value = {}
+        _save_authenticated_cookies(cookie_jar, URL("https://www.twitch.tv"))
+        cookie_jar.save.assert_not_called()
+
+        cookie_jar.filter_cookies.return_value = {"auth-token": "token"}
+        _save_authenticated_cookies(cookie_jar, URL("https://www.twitch.tv"))
+        cookie_jar.save.assert_called_once()
+
 
 class WebSettingsTests(unittest.IsolatedAsyncioTestCase):
     async def test_dashboard_login_sets_session_cookie(self) -> None:
