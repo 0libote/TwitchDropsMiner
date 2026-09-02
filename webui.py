@@ -27,6 +27,38 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("TwitchDrops")
 WEB_ROOT = Path(__file__).with_name("web")
+TOKEN_LOGIN_HTML = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Dashboard access · Twitch Drops Miner Next</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0d0d0f; color: #f4f3f7; font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { width: min(420px, calc(100% - 40px)); padding: 32px; border: 1px solid #29292f; border-radius: 14px; background: #151518; }
+    p { color: #aaa8b0; }
+    label, input, button { display: block; width: 100%; box-sizing: border-box; }
+    label { margin: 24px 0 8px; font-weight: 650; }
+    input, button { padding: 11px 12px; border: 1px solid #35353d; border-radius: 8px; color: inherit; background: #0d0d0f; font: inherit; }
+    button { margin-top: 12px; border-color: #7755dd; color: #100c18; background: #9b78ff; font-weight: 750; cursor: pointer; }
+    .error { color: #ef9696; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Dashboard access</h1>
+    <p>Enter the token configured as <code>TDM_ACCESS_TOKEN</code>. This browser will remember it in an HTTP-only session cookie.</p>
+    __ERROR__
+    <form action="/session" method="post">
+      <label for="token">Access token</label>
+      <input id="token" name="token" type="password" required autofocus autocomplete="off">
+      <button type="submit">Open dashboard</button>
+    </form>
+  </main>
+</body>
+</html>
+"""
 
 
 def _iso(value: datetime) -> str:
@@ -447,6 +479,7 @@ class WebUI:
     async def _serve(self) -> None:
         app = web.Application(middlewares=[self._security_headers, self._authenticate])
         app.router.add_get("/", self._index)
+        app.router.add_post("/session", self._dashboard_login)
         app.router.add_get("/healthz", self._health)
         app.router.add_get("/api/state", self._state)
         app.router.add_get("/api/events", self._events)
@@ -489,11 +522,17 @@ class WebUI:
 
     @web.middleware
     async def _authenticate(self, request: web.Request, handler: Any) -> web.StreamResponse:
-        if request.path == "/healthz" or self.access_token is None:
+        if request.path in {"/healthz", "/session"} or self.access_token is None:
             return await handler(request)
         query_token = request.query.get("token")
         supplied = query_token or request.cookies.get("tdm_session")
         if supplied is None or not secrets.compare_digest(supplied, self.access_token):
+            if request.path == "/":
+                return web.Response(
+                    text=TOKEN_LOGIN_HTML.replace("__ERROR__", ""),
+                    content_type="text/html",
+                    status=401,
+                )
             raise web.HTTPUnauthorized(text="A valid dashboard access token is required.")
         response: web.StreamResponse
         if query_token == self.access_token and request.path == "/":
@@ -508,6 +547,26 @@ class WebUI:
                 samesite="Strict",
                 secure=request.secure,
             )
+        return response
+
+    async def _dashboard_login(self, request: web.Request) -> web.StreamResponse:
+        token = str((await request.post()).get("token", ""))
+        if self.access_token is None or not secrets.compare_digest(token, self.access_token):
+            return web.Response(
+                text=TOKEN_LOGIN_HTML.replace(
+                    "__ERROR__", '<p class="error" role="alert">That token is not valid.</p>'
+                ),
+                content_type="text/html",
+                status=401,
+            )
+        response = web.HTTPFound("/")
+        response.set_cookie(
+            "tdm_session",
+            self.access_token,
+            httponly=True,
+            samesite="Strict",
+            secure=request.secure,
+        )
         return response
 
     async def _index(self, request: web.Request) -> web.FileResponse:

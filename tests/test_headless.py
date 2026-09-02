@@ -81,6 +81,29 @@ class HeadlessImportTests(unittest.TestCase):
 
 
 class WebSettingsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dashboard_login_sets_session_cookie(self) -> None:
+        from webui import WebUI
+
+        ui = WebUI(SimpleNamespace(), access_token="correct-token")
+
+        class Request:
+            secure = False
+
+            def __init__(self, token: str) -> None:
+                self.token = token
+
+            async def post(self) -> dict[str, str]:
+                return {"token": self.token}
+
+        rejected = await ui._dashboard_login(Request("wrong-token"))  # type: ignore[arg-type]
+        self.assertEqual(rejected.status, 401)
+        self.assertIn("That token is not valid", rejected.text)
+
+        accepted = await ui._dashboard_login(Request("correct-token"))  # type: ignore[arg-type]
+        self.assertEqual(accepted.status, 302)
+        self.assertEqual(accepted.cookies["tdm_session"].value, "correct-token")
+        self.assertTrue(accepted.cookies["tdm_session"]["httponly"])
+
     async def test_channel_switch_rejects_ineligible_channel(self) -> None:
         from webui import WebUI
 

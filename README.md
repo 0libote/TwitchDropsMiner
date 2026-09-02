@@ -105,8 +105,9 @@ export TDM_ACCESS_TOKEN="replace-with-a-long-random-value"
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:8080/?token=replace-with-a-long-random-value` once. The dashboard stores an
-HTTP-only session cookie so the token does not need to remain in later URLs.
+Open `http://127.0.0.1:8080/` and enter the token, or include it once as
+`?token=replace-with-a-long-random-value`. The dashboard stores an HTTP-only session cookie so the
+token does not need to remain in later URLs.
 
 The Compose configuration publishes only to the host's loopback interface. If you deliberately
 expose it through a reverse proxy, use HTTPS and keep the access token enabled; the dashboard can
