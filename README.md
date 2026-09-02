@@ -66,7 +66,6 @@ Useful options:
 --host ADDRESS       Bind address; defaults to 127.0.0.1
 --port PORT          Dashboard port; defaults to 8080
 --no-browser         Do not launch a browser automatically
---access-token TOKEN Protect the dashboard with a token
 --legacy-ui          Run the original Tkinter interface
 --log                Write log.txt in the data directory
 ```
@@ -85,15 +84,13 @@ identity are final.
 
 ## Run with Docker
 
-Published images support `linux/amd64` and `linux/arm64`. Choose a long random dashboard token,
-then run the latest image:
+Published images support `linux/amd64` and `linux/arm64`. Run the latest image:
 
 ```bash
 docker run -d \
   --name twitch-drops-miner-next \
   --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
-  -e TDM_ACCESS_TOKEN="replace-with-a-long-random-value" \
   -v tdm-data:/data \
   ghcr.io/0libote/twitchdropsminer:latest
 ```
@@ -101,17 +98,14 @@ docker run -d \
 To build directly from a clone instead:
 
 ```bash
-export TDM_ACCESS_TOKEN="replace-with-a-long-random-value"
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:8080/` and enter the token, or include it once as
-`?token=replace-with-a-long-random-value`. The dashboard stores an HTTP-only session cookie so the
-token does not need to remain in later URLs.
+Open `http://127.0.0.1:8080/`.
 
 The Compose configuration publishes only to the host's loopback interface. If you deliberately
-expose it through a reverse proxy, use HTTPS and keep the access token enabled; the dashboard can
-control the miner and reveal Twitch account state.
+expose it beyond a trusted LAN, add authentication and HTTPS at the reverse proxy; the dashboard
+can control the miner and reveal Twitch account state.
 
 Common commands:
 

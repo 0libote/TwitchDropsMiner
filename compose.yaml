@@ -6,8 +6,6 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - tdm-data:/data
-    environment:
-      TDM_ACCESS_TOKEN: ${TDM_ACCESS_TOKEN:?Set TDM_ACCESS_TOKEN to a long random value}
 
 volumes:
   tdm-data:

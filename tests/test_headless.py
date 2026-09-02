@@ -54,12 +54,6 @@ class HeadlessImportTests(unittest.TestCase):
         ui.report_network_recovery("https://spade.twitch.tv/track")
         self.assertEqual(ui.snapshot()["networkIssues"], [])
 
-    def test_remote_bind_gets_an_access_token(self) -> None:
-        from webui import WebUI
-
-        ui = WebUI(SimpleNamespace(), host="0.0.0.0", open_browser=False)
-        self.assertGreaterEqual(len(ui.access_token or ""), 24)
-
     def test_web_notifications_respect_the_setting(self) -> None:
         from webui import WebUI
 
@@ -93,29 +87,6 @@ class HeadlessImportTests(unittest.TestCase):
 
 
 class WebSettingsTests(unittest.IsolatedAsyncioTestCase):
-    async def test_dashboard_login_sets_session_cookie(self) -> None:
-        from webui import WebUI
-
-        ui = WebUI(SimpleNamespace(), access_token="correct-token")
-
-        class Request:
-            secure = False
-
-            def __init__(self, token: str) -> None:
-                self.token = token
-
-            async def post(self) -> dict[str, str]:
-                return {"token": self.token}
-
-        rejected = await ui._dashboard_login(Request("wrong-token"))  # type: ignore[arg-type]
-        self.assertEqual(rejected.status, 401)
-        self.assertIn("That token is not valid", rejected.text)
-
-        accepted = await ui._dashboard_login(Request("correct-token"))  # type: ignore[arg-type]
-        self.assertEqual(accepted.status, 302)
-        self.assertEqual(accepted.cookies["tdm_session"].value, "correct-token")
-        self.assertTrue(accepted.cookies["tdm_session"]["httponly"])
-
     async def test_channel_switch_rejects_ineligible_channel(self) -> None:
         from webui import WebUI
 

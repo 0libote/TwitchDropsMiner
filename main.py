@@ -46,7 +46,6 @@ if __name__ == "__main__":
         host: str
         port: int
         no_browser: bool
-        access_token: str | None
 
         @property
         def logging_level(self) -> int:
@@ -103,11 +102,6 @@ if __name__ == "__main__":
         default=os.environ.get("TDM_NO_BROWSER", "").lower() in {"1", "true", "yes"},
         help="do not open the dashboard in a browser",
     )
-    parser.add_argument(
-        "--access-token",
-        default=os.environ.get("TDM_ACCESS_TOKEN"),
-        help="dashboard token; generated automatically for non-local binds",
-    )
     parser.add_argument("--debug-ws", dest="_debug_ws", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--debug-gql", dest="_debug_gql", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(namespace=ParsedArgs())
@@ -145,7 +139,6 @@ if __name__ == "__main__":
                 host=args.host,
                 port=args.port,
                 open_browser=not args.no_browser,
-                access_token=args.access_token or None,
             )
         client = Twitch(settings, ui_factory=ui_factory)
 
