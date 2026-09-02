@@ -86,6 +86,7 @@ async function saveSettings(values = settingsDraft, message = "Settings saved") 
   try {
     await request("/api/settings", {method: "PUT", body: JSON.stringify(values)});
     settingsDraft = cloneSettings(values);
+    state.settings = cloneSettings(values);
     settingsDirty = false;
     toast(message);
     renderRoute(true);
@@ -227,7 +228,7 @@ function campaignBadge(campaign) {
 function campaignListTemplate() {
   return `
     <div class="campaign-toolbar">
-      <label class="search"><span class="hidden">Search campaigns</span><input id="campaign-search" type="search" placeholder="Search campaigns or games" value="${esc(campaignQuery)}"></label>
+      <label class="search"><span class="hidden">Search campaigns</span><input id="campaign-search" type="search" aria-label="Search campaigns" placeholder="Search campaigns or games" value="${esc(campaignQuery)}"></label>
       <div class="segmented" aria-label="Campaign filter">${[["available","Available"],["active","Active"],["upcoming","Upcoming"],["finished","Completed"],["all","All"]].map(([value, label]) => `<button type="button" data-campaign-filter="${value}" aria-pressed="${campaignFilter === value}">${label}</button>`).join("")}</div>
     </div>
     <section class="panel campaign-list" id="campaign-list" aria-live="polite"></section>`;
@@ -283,8 +284,108 @@ function campaignDetailTemplate(campaign) {
     </div>`;
 }
 
-function placeholderTemplate(title, text) {
-  return `<section class="panel empty-state"><div><h2>${esc(title)}</h2><p>${esc(text)}</p></div></section>`;
+function saveBarTemplate() {
+  return `<div class="save-bar ${settingsDirty ? "" : "hidden"}" id="save-bar"><p>You have unsaved changes.</p><div class="button-row"><button class="button quiet small" type="button" data-discard-settings>Discard</button><button class="button primary small" type="button" data-save-settings>Save changes</button></div></div>`;
+}
+
+function priorityRows() {
+  return settingsDraft.priority.length ? settingsDraft.priority.map((game, index) => `<div class="queue-row">
+    <span class="queue-number">${index + 1}</span>
+    <span><strong>${esc(game)}</strong><small>${index === 0 ? "First choice" : "Mined after higher priorities"}</small></span>
+    <span class="queue-controls">
+      <button class="icon-button" type="button" data-list-action="up" data-list="priority" data-index="${index}" aria-label="Move ${esc(game)} up" ${index === 0 ? "disabled" : ""}>↑</button>
+      <button class="icon-button" type="button" data-list-action="down" data-list="priority" data-index="${index}" aria-label="Move ${esc(game)} down" ${index === settingsDraft.priority.length - 1 ? "disabled" : ""}>↓</button>
+      <button class="icon-button" type="button" data-list-action="remove" data-list="priority" data-index="${index}" aria-label="Remove ${esc(game)}">×</button>
+    </span>
+  </div>`).join("") : `<div class="empty-state"><div><strong>No priority games</strong><p>Add games below or let the miner choose automatically.</p></div></div>`;
+}
+
+function excludedTags() {
+  return settingsDraft.exclude.length ? settingsDraft.exclude.map((game, index) => `<span class="tag">${esc(game)}<button type="button" data-list-action="remove" data-list="exclude" data-index="${index}" aria-label="Remove ${esc(game)}">×</button></span>`).join("") : `<span class="muted">No games excluded.</span>`;
+}
+
+function miningTemplate() {
+  const gameOptions = state.games.map(game => `<option value="${esc(game)}"></option>`).join("");
+  return `
+    <div class="mining-layout">
+      <section class="panel queue-editor">
+        <div class="panel-header"><div><h2>Game priority</h2><p class="muted">The first eligible game with a live channel is mined</p></div></div>
+        <div id="priority-rows">${priorityRows()}</div>
+        <div class="add-row"><input id="priority-game" list="game-options" placeholder="Add a discovered game"><button class="button secondary" type="button" data-add-list="priority">Add</button></div>
+      </section>
+      <div>
+        <section class="panel">
+          <div class="panel-header"><div><h2>Fallback rule</h2><p class="muted">Used after priority games</p></div></div>
+          <div class="panel-body"><label for="priority-mode" class="muted">Order other eligible games</label><select id="priority-mode" data-setting="priorityMode" style="margin-top:7px"><option value="PRIORITY_ONLY" ${settingsDraft.priorityMode === "PRIORITY_ONLY" ? "selected" : ""}>Do not mine other games</option><option value="ENDING_SOONEST" ${settingsDraft.priorityMode === "ENDING_SOONEST" ? "selected" : ""}>Campaign ending soonest</option><option value="LOW_AVBL_FIRST" ${settingsDraft.priorityMode === "LOW_AVBL_FIRST" ? "selected" : ""}>Lowest channel availability</option></select></div>
+        </section>
+        <section class="panel" style="margin-top:14px">
+          <div class="panel-header"><div><h2>Excluded games</h2><p class="muted">Never select these games</p></div></div>
+          <div class="excluded-tags" id="excluded-tags">${excludedTags()}</div>
+          <div class="add-row"><input id="exclude-game" list="game-options" placeholder="Exclude a discovered game"><button class="button secondary" type="button" data-add-list="exclude">Add</button></div>
+        </section>
+      </div>
+    </div>
+    <datalist id="game-options">${gameOptions}</datalist>
+    ${saveBarTemplate()}
+    <div class="section-title"><div><h2>Live channels</h2><p class="muted">Eligible streams for the current mining plan</p></div><span class="muted" id="channel-count"></span></div>
+    <section class="panel channel-list" id="channel-list"></section>`;
+}
+
+function updateChannels() {
+  const container = $("#channel-list");
+  if (!container) return;
+  const channels = [...state.channels].sort((a, b) => Number(b.watching) - Number(a.watching) || Number(b.watchable) - Number(a.watchable) || (b.viewers || 0) - (a.viewers || 0));
+  $("#channel-count").textContent = `${channels.length} available`;
+  container.innerHTML = channels.length ? channels.map(channel => `<article class="channel-row">
+    <div><strong>${esc(channel.name)}</strong><small>${esc(channel.title || (channel.online ? "Live" : "Offline"))}</small></div>
+    <div class="channel-game"><strong>${esc(channel.game || "No game")}</strong><small>${channel.dropsEnabled ? "Drops enabled" : "Drops unavailable"}</small></div>
+    <div class="channel-viewers"><strong>${channel.viewers == null ? "—" : Number(channel.viewers).toLocaleString()}</strong><small>viewers</small></div>
+    <button class="button ${channel.watching ? "primary" : "secondary"} small" type="button" data-channel="${channel.id}" ${!channel.watchable || channel.watching ? "disabled" : ""}>${channel.watching ? "Watching" : channel.watchable ? "Switch" : "Unavailable"}</button>
+  </article>`).join("") : `<div class="empty-state"><div><strong>No eligible live channels</strong><p>The miner will keep checking automatically.</p></div></div>`;
+}
+
+function settingsTemplate() {
+  return `
+    <div class="settings-layout">
+      <div>
+        <section class="panel setting-section">
+          <div class="panel-header"><div><h2>Campaigns</h2><p class="muted">Control which kinds of drops can be mined</p></div></div>
+          <div class="setting-row toggle-row"><div><strong>Badge and emote campaigns</strong><p>Include campaigns whose rewards are Twitch badges or emotes.</p></div><label class="switch"><input type="checkbox" data-setting="enableBadgesEmotes" ${settingsDraft.enableBadgesEmotes ? "checked" : ""} aria-label="Include badge and emote campaigns"><span></span></label></div>
+          <div class="setting-row toggle-row"><div><strong>Verify drops on each channel</strong><p>Check campaign availability per channel before switching.</p></div><label class="switch"><input type="checkbox" data-setting="availableDropsCheck" ${settingsDraft.availableDropsCheck ? "checked" : ""} aria-label="Verify drops on each channel"><span></span></label></div>
+        </section>
+        <section class="panel setting-section">
+          <div class="panel-header"><div><h2>Notifications</h2><p class="muted">Choose what appears in the activity feed</p></div></div>
+          <div class="setting-row toggle-row"><div><strong>Claim notifications</strong><p>Record a notification whenever a drop is claimed.</p></div><label class="switch"><input type="checkbox" data-setting="trayNotifications" ${settingsDraft.trayNotifications ? "checked" : ""} aria-label="Show claim notifications"><span></span></label></div>
+        </section>
+        <section class="panel setting-section">
+          <div class="panel-header"><div><h2>Network</h2><p class="muted">Usually best left at the defaults</p></div></div>
+          <div class="setting-row"><div><label for="connection-quality"><strong>Connection tolerance</strong></label><p>Higher values give slow or unreliable networks more time.</p></div><div><input id="connection-quality" type="range" min="1" max="6" value="${settingsDraft.connectionQuality}" data-setting="connectionQuality"><div class="progress-meta"><span>Fast</span><output id="quality-output">${settingsDraft.connectionQuality} / 6</output><span>Tolerant</span></div></div></div>
+          <div class="setting-row"><div><label for="proxy"><strong>HTTP proxy</strong></label><p>Optional. Include a scheme, hostname, and explicit port.</p></div><div><input id="proxy" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://localhost:3128" value="${esc(settingsDraft.proxy)}" data-setting="proxy"><p class="form-error hidden" id="proxy-error">Enter a complete proxy URL including its port.</p></div></div>
+        </section>
+        ${saveBarTemplate()}
+      </div>
+      <aside>
+        <section class="panel side-note"><h3>Mining priorities moved</h3><p>Game priorities and exclusions now live under Mining because they affect everyday operation rather than application configuration.</p><a class="button secondary small" href="/mining" data-route style="display:inline-block;margin-top:13px">Open mining plan</a></section>
+        <section class="panel danger-zone" style="margin-top:14px"><div class="panel-header"><div><h2>Account and system</h2><p class="muted">Actions that interrupt the miner</p></div></div><div class="panel-body button-row"><button class="button secondary small" data-action="logout" ${state.canLogout ? "" : "disabled"}>Disconnect Twitch</button><button class="button secondary small" data-action="restart">Restart miner</button><button class="button danger small" data-action="shutdown">Shut down</button></div></section>
+      </aside>
+    </div>`;
+}
+
+function diagnosticsTemplate() {
+  const socketTopics = state.websockets.reduce((sum, socket) => sum + (socket.topics || 0), 0);
+  const lines = [...(state.messages || [])].reverse();
+  const notifications = state.notifications || [];
+  return `
+    <div class="diagnostic-grid">
+      <article class="panel diagnostic-card"><span>Miner state</span><strong>${esc(state.activity || "Unknown")}</strong><small>${esc(state.status || "No status message")}</small></article>
+      <article class="panel diagnostic-card"><span>Event sockets</span><strong>${state.websockets.length || 0}</strong><small>${socketTopics} subscribed topics</small></article>
+      <article class="panel diagnostic-card"><span>Dashboard stream</span><strong>${connected ? "Connected" : "Reconnecting"}</strong><small>State revision ${state.revision}</small></article>
+    </div>
+    <section class="panel">
+      <div class="panel-header"><div><h2>Event log</h2><p class="muted">Newest events appear first</p></div><button class="button secondary small" type="button" data-copy-log>Copy log</button></div>
+      <div class="log" id="activity-log">${notifications.map(item => `<p class="notification"><strong>${esc(item.title)}</strong> ${esc(item.message)}</p>`).join("")}${lines.map(line => `<p>${esc(line)}</p>`).join("") || (!notifications.length ? "<p>Waiting for miner events…</p>" : "")}</div>
+    </section>
+    <section class="panel side-note" style="margin-top:14px"><h3>Network health</h3><p>${state.networkIssues?.length ? `Requests are failing for ${esc(state.networkIssues.join(", "))}.` : "No repeated Twitch network failures have been detected."}</p></section>`;
 }
 
 function renderRoute(force = false) {
@@ -297,12 +398,17 @@ function renderRoute(force = false) {
     if (route.name === "dashboard") $("#view").innerHTML = dashboardTemplate();
     if (route.name === "campaigns") $("#view").innerHTML = campaignListTemplate();
     if (route.name === "campaign") $("#view").innerHTML = campaignDetailTemplate(state.campaigns.find(item => item.id === route.id));
-    if (route.name === "mining") $("#view").innerHTML = placeholderTemplate("Mining controls", "Priority planning and channels are being moved here.");
-    if (route.name === "settings") $("#view").innerHTML = placeholderTemplate("Settings", "Infrequent preferences and account controls live here.");
-    if (route.name === "diagnostics") $("#view").innerHTML = placeholderTemplate("Diagnostics", "Connection information and the event log live here.");
+    if (route.name === "mining") $("#view").innerHTML = miningTemplate();
+    if (route.name === "settings") $("#view").innerHTML = settingsTemplate();
+    if (route.name === "diagnostics") $("#view").innerHTML = diagnosticsTemplate();
   }
   if (route.name === "dashboard") updateDashboard();
   if (route.name === "campaigns") updateCampaignList();
+  if (route.name === "campaign" && !changed && !settingsDirty) $("#view").innerHTML = campaignDetailTemplate(state.campaigns.find(item => item.id === route.id));
+  if (route.name === "mining" && !changed && !settingsDirty) $("#view").innerHTML = miningTemplate();
+  if (route.name === "mining") updateChannels();
+  if (route.name === "settings" && !changed && !settingsDirty) $("#view").innerHTML = settingsTemplate();
+  if (route.name === "diagnostics" && !changed) $("#view").innerHTML = diagnosticsTemplate();
 }
 
 function navigate(path, {replace = false, focus = true} = {}) {
@@ -314,6 +420,42 @@ function navigate(path, {replace = false, focus = true} = {}) {
   renderRoute();
   scrollTo(0, 0);
   if (focus) $("#view").focus({preventScroll: true});
+}
+
+function markSettingsDirty() {
+  settingsDirty = true;
+  $("#save-bar")?.classList.remove("hidden");
+}
+
+function addGameToList(listName) {
+  const input = $(`#${listName}-game`);
+  const game = input.value.trim();
+  if (!game) return;
+  const other = listName === "priority" ? "exclude" : "priority";
+  settingsDraft[other] = settingsDraft[other].filter(item => item !== game);
+  if (!settingsDraft[listName].includes(game)) settingsDraft[listName].push(game);
+  markSettingsDirty();
+  renderRoute(true);
+}
+
+function changeListItem(button) {
+  const list = settingsDraft[button.dataset.list];
+  const index = Number(button.dataset.index);
+  if (button.dataset.listAction === "remove") list.splice(index, 1);
+  if (button.dataset.listAction === "up" && index > 0) [list[index - 1], list[index]] = [list[index], list[index - 1]];
+  if (button.dataset.listAction === "down" && index < list.length - 1) [list[index + 1], list[index]] = [list[index], list[index + 1]];
+  markSettingsDirty();
+  renderRoute(true);
+}
+
+function validProxy(value) {
+  if (!value.trim()) return true;
+  try {
+    const url = new URL(value);
+    return Boolean(url.hostname && url.port);
+  } catch (_error) {
+    return false;
+  }
 }
 
 document.addEventListener("click", async event => {
@@ -345,7 +487,57 @@ document.addEventListener("click", async event => {
     return;
   }
   const preference = event.target.closest("[data-preference]");
-  if (preference) await updateGamePreference(preference.dataset.game, preference.dataset.preference);
+  if (preference) {
+    await updateGamePreference(preference.dataset.game, preference.dataset.preference);
+    return;
+  }
+  const listAction = event.target.closest("[data-list-action]");
+  if (listAction) {
+    changeListItem(listAction);
+    return;
+  }
+  const addList = event.target.closest("[data-add-list]");
+  if (addList) {
+    addGameToList(addList.dataset.addList);
+    return;
+  }
+  const channel = event.target.closest("[data-channel]");
+  if (channel) {
+    channel.disabled = true;
+    try {
+      await request(`/api/channels/${channel.dataset.channel}`, {method: "POST"});
+      toast("Channel switch requested");
+    } catch (error) {
+      toast(error.message || "Unable to switch channel", true);
+      channel.disabled = false;
+    }
+    return;
+  }
+  if (event.target.closest("[data-discard-settings]")) {
+    syncSettingsDraft(true);
+    renderRoute(true);
+    toast("Changes discarded");
+    return;
+  }
+  if (event.target.closest("[data-save-settings]")) {
+    const proxyError = $("#proxy-error");
+    if (!validProxy(settingsDraft.proxy)) {
+      proxyError?.classList.remove("hidden");
+      $("#proxy")?.focus();
+      return;
+    }
+    await saveSettings();
+    return;
+  }
+  if (event.target.closest("[data-copy-log]")) {
+    try {
+      await navigator.clipboard.writeText($("#activity-log").innerText);
+      toast("Activity log copied");
+    } catch (_error) {
+      toast("Unable to copy the activity log", true);
+    }
+    return;
+  }
   if (event.target.closest("#copy-code")) {
     try {
       await navigator.clipboard.writeText($("#activation-code").textContent);
@@ -360,7 +552,29 @@ document.addEventListener("input", event => {
   if (event.target.id === "campaign-search") {
     campaignQuery = event.target.value;
     updateCampaignList();
+    return;
   }
+  const setting = event.target.closest("[data-setting]");
+  if (setting) {
+    const key = setting.dataset.setting;
+    settingsDraft[key] = setting.type === "checkbox" ? setting.checked : setting.type === "range" ? Number(setting.value) : setting.value;
+    if (setting.id === "connection-quality") $("#quality-output").textContent = `${setting.value} / 6`;
+    if (setting.id === "proxy") $("#proxy-error").classList.toggle("hidden", validProxy(setting.value));
+    markSettingsDirty();
+  }
+});
+
+document.addEventListener("change", event => {
+  const setting = event.target.closest("[data-setting]");
+  if (!setting) return;
+  settingsDraft[setting.dataset.setting] = setting.type === "checkbox" ? setting.checked : setting.type === "range" ? Number(setting.value) : setting.value;
+  markSettingsDirty();
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key !== "Enter") return;
+  if (event.target.id === "priority-game") { event.preventDefault(); addGameToList("priority"); }
+  if (event.target.id === "exclude-game") { event.preventDefault(); addGameToList("exclude"); }
 });
 
 addEventListener("popstate", () => {

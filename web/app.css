@@ -33,6 +33,7 @@ h3 { margin-bottom: 0; font-size: 15px; line-height: 1.35; }
 .muted { color: var(--muted); }
 .loading { display: grid; min-height: 100vh; place-items: center; color: var(--muted); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#view:focus { outline: none; }
 
 .app-shell { min-height: 100vh; }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 4; display: flex; width: var(--sidebar-width); flex-direction: column; padding: 20px 14px 16px; border-right: 1px solid var(--line); background: var(--sidebar); }
