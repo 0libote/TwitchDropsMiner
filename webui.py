@@ -439,7 +439,9 @@ class WebUI:
 
     async def _serve(self) -> None:
         app = web.Application(middlewares=[self._security_headers])
-        app.router.add_get("/", self._index)
+        for path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics"):
+            app.router.add_get(path, self._index)
+        app.router.add_get("/campaigns/{campaign_id}", self._index)
         app.router.add_get("/healthz", self._health)
         app.router.add_get("/api/state", self._state)
         app.router.add_get("/api/events", self._events)
