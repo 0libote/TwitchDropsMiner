@@ -57,20 +57,20 @@ jobs:
           docker logs tdm-next-smoke
           exit 1
       - name: Log in to GitHub Container Registry
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin <<< "$GH_TOKEN"
       - name: Publish multi-architecture image
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/0libote/twitchdropsminer:${{ github.ref_name }}
             ghcr.io/0libote/twitchdropsminer:latest
+            ${{ startsWith(github.ref, 'refs/tags/v') && format('ghcr.io/0libote/twitchdropsminer:{0}', github.ref_name) || '' }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

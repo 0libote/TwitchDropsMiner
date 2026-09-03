@@ -96,6 +96,9 @@ docker run -d \
   ghcr.io/0libote/twitchdropsminer:latest
 ```
 
+The `latest` image follows every successful build of `main`. Version tags also publish a matching
+immutable container tag alongside `latest`.
+
 To build directly from a clone instead:
 
 ```bash
