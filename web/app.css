@@ -182,10 +182,16 @@ input::placeholder { color: #777480; }
 .side-note { padding: 17px 18px; }
 .side-note p { margin: 6px 0 0; color: var(--muted); }
 
-.queue-editor { overflow: hidden; }
+.queue-editor { overflow: visible; }
 .queue-editor .queue-row { grid-template-columns: auto minmax(0, 1fr) auto; min-height: 58px; }
 .queue-controls { display: flex; gap: 2px; }
 .add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 13px; border-top: 1px solid var(--line); }
+.game-picker { position: relative; min-width: 0; }
+.game-options { position: absolute; z-index: 6; top: calc(100% + 6px); right: 0; left: 0; overflow: auto; max-height: 292px; padding: 5px; border: 1px solid var(--line-strong); border-radius: 8px; background: #202027; box-shadow: 0 14px 32px rgb(0 0 0 / 38%); }
+.game-options[hidden] { display: none; }
+.game-options button { display: block; width: 100%; min-height: 36px; padding: 7px 9px; overflow: hidden; border: 0; border-radius: 5px; color: var(--text-soft); background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.game-options button:hover, .game-options button[aria-selected="true"] { color: var(--text); background: var(--surface-hover); }
+.game-options p { margin: 0; padding: 9px; color: var(--muted); font-size: 12px; }
 .excluded-tags { display: flex; flex-wrap: wrap; gap: 7px; padding: 15px; }
 .tag { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; padding: 4px 5px 4px 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-soft); background: var(--surface-raised); }
 .tag button { width: 23px; height: 23px; padding: 0; border: 0; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; }

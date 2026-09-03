@@ -312,14 +312,21 @@ function excludedTags() {
   return settingsDraft.exclude.length ? settingsDraft.exclude.map((game, index) => `<span class="tag">${esc(game)}<button type="button" data-list-action="remove" data-list="exclude" data-index="${index}" aria-label="Remove ${esc(game)}">×</button></span>`).join("") : `<span class="muted">No games excluded.</span>`;
 }
 
+function gamePicker(listName, placeholder) {
+  const label = listName === "priority" ? "Add a priority game" : "Exclude a game";
+  return `<div class="game-picker">
+    <input id="${listName}-game" type="search" data-game-input="${listName}" placeholder="${placeholder}" role="combobox" aria-label="${label}" aria-autocomplete="list" aria-controls="${listName}-options" aria-expanded="false" autocomplete="off" spellcheck="false">
+    <div class="game-options" id="${listName}-options" role="listbox" hidden></div>
+  </div><button class="button secondary" type="button" data-add-list="${listName}" disabled>Add</button>`;
+}
+
 function miningTemplate() {
-  const gameOptions = state.games.map(game => `<option value="${esc(game)}"></option>`).join("");
   return `
     <div class="mining-layout">
       <section class="panel queue-editor">
         <div class="panel-header"><div><h2>Game priority</h2><p class="muted">The first eligible game with a live channel is mined</p></div></div>
         <div id="priority-rows">${priorityRows()}</div>
-        <div class="add-row"><input id="priority-game" list="game-options" placeholder="Add a discovered game"><button class="button secondary" type="button" data-add-list="priority">Add</button></div>
+        <div class="add-row">${gamePicker("priority", "Search discovered games")}</div>
       </section>
       <div>
         <section class="panel">
@@ -329,11 +336,10 @@ function miningTemplate() {
         <section class="panel" style="margin-top:14px">
           <div class="panel-header"><div><h2>Excluded games</h2><p class="muted">Never select these games</p></div></div>
           <div class="excluded-tags" id="excluded-tags">${excludedTags()}</div>
-          <div class="add-row"><input id="exclude-game" list="game-options" placeholder="Exclude a discovered game"><button class="button secondary" type="button" data-add-list="exclude">Add</button></div>
+          <div class="add-row">${gamePicker("exclude", "Search discovered games")}</div>
         </section>
       </div>
     </div>
-    <datalist id="game-options">${gameOptions}</datalist>
     ${saveBarTemplate()}
     <div class="section-title"><div><h2>Live channels</h2><p class="muted">Eligible streams for the current mining plan</p></div><span class="muted" id="channel-count"></span></div>
     <section class="panel channel-list" id="channel-list"></section>`;
@@ -436,15 +442,53 @@ function markSettingsDirty() {
   $("#save-bar")?.classList.remove("hidden");
 }
 
-function addGameToList(listName) {
+function matchingGames(listName, query) {
+  const selected = new Set(settingsDraft[listName]);
+  const needle = query.trim().toLocaleLowerCase();
+  return state.games.filter(game => !selected.has(game) && (!needle || game.toLocaleLowerCase().includes(needle))).slice(0, 8);
+}
+
+function closeGamePicker(input) {
+  $(`#${input.dataset.gameInput}-options`).hidden = true;
+  input.setAttribute("aria-expanded", "false");
+  input.removeAttribute("aria-activedescendant");
+}
+
+function updateGamePicker(input, open = true) {
+  const listName = input.dataset.gameInput;
+  const matches = matchingGames(listName, input.value);
+  const active = Math.min(Number(input.dataset.active || 0), Math.max(0, matches.length - 1));
+  input.dataset.active = active;
+  const options = $(`#${listName}-options`);
+  options.innerHTML = matches.map((game, index) => `<button id="${listName}-option-${index}" type="button" role="option" data-game-option="${esc(game)}" data-list="${listName}" aria-selected="${index === active}">${esc(game)}</button>`).join("") || `<p>No matching games</p>`;
+  options.hidden = !open;
+  input.setAttribute("aria-expanded", String(open));
+  if (open && matches.length) input.setAttribute("aria-activedescendant", `${listName}-option-${active}`);
+  else input.removeAttribute("aria-activedescendant");
+  $(`[data-add-list="${listName}"]`).disabled = !state.games.includes(input.value) || settingsDraft[listName].includes(input.value);
+}
+
+function updateMiningEditor() {
+  $("#priority-rows").innerHTML = priorityRows();
+  $("#excluded-tags").innerHTML = excludedTags();
+  $$('[data-game-input]').forEach(input => updateGamePicker(input, false));
+}
+
+function addGameToList(listName, selectedGame) {
   const input = $(`#${listName}-game`);
-  const game = input.value.trim();
-  if (!game) return;
+  const game = selectedGame || state.games.find(item => item === input.value.trim());
+  if (!game) {
+    toast("Choose a game from the results", true);
+    return;
+  }
   const other = listName === "priority" ? "exclude" : "priority";
   settingsDraft[other] = settingsDraft[other].filter(item => item !== game);
   if (!settingsDraft[listName].includes(game)) settingsDraft[listName].push(game);
   markSettingsDirty();
-  renderRoute(true);
+  input.value = "";
+  updateMiningEditor();
+  input.focus();
+  closeGamePicker(input);
 }
 
 function changeListItem(button) {
@@ -454,7 +498,7 @@ function changeListItem(button) {
   if (button.dataset.listAction === "up" && index > 0) [list[index - 1], list[index]] = [list[index], list[index - 1]];
   if (button.dataset.listAction === "down" && index < list.length - 1) [list[index + 1], list[index]] = [list[index], list[index + 1]];
   markSettingsDirty();
-  renderRoute(true);
+  updateMiningEditor();
 }
 
 function validProxy(value) {
@@ -505,11 +549,19 @@ document.addEventListener("click", async event => {
     changeListItem(listAction);
     return;
   }
+  const gameOption = event.target.closest("[data-game-option]");
+  if (gameOption) {
+    addGameToList(gameOption.dataset.list, gameOption.dataset.gameOption);
+    return;
+  }
   const addList = event.target.closest("[data-add-list]");
   if (addList) {
     addGameToList(addList.dataset.addList);
     return;
   }
+  $$('[data-game-input]').forEach(input => {
+    if (!event.target.closest(".game-picker")) closeGamePicker(input);
+  });
   const channel = event.target.closest("[data-channel]");
   if (channel) {
     channel.disabled = true;
@@ -558,6 +610,11 @@ document.addEventListener("click", async event => {
 });
 
 document.addEventListener("input", event => {
+  if (event.target.matches("[data-game-input]")) {
+    event.target.dataset.active = 0;
+    updateGamePicker(event.target);
+    return;
+  }
   if (event.target.id === "campaign-search") {
     campaignQuery = event.target.value;
     updateCampaignList();
@@ -573,6 +630,10 @@ document.addEventListener("input", event => {
   }
 });
 
+document.addEventListener("focusin", event => {
+  if (event.target.matches("[data-game-input]")) updateGamePicker(event.target);
+});
+
 document.addEventListener("change", event => {
   const setting = event.target.closest("[data-setting]");
   if (!setting) return;
@@ -581,9 +642,23 @@ document.addEventListener("change", event => {
 });
 
 document.addEventListener("keydown", event => {
-  if (event.key !== "Enter") return;
-  if (event.target.id === "priority-game") { event.preventDefault(); addGameToList("priority"); }
-  if (event.target.id === "exclude-game") { event.preventDefault(); addGameToList("exclude"); }
+  const input = event.target.closest("[data-game-input]");
+  if (!input) return;
+  if (event.key === "Escape" || event.key === "Tab") {
+    closeGamePicker(input);
+    return;
+  }
+  if (!["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) return;
+  event.preventDefault();
+  const matches = matchingGames(input.dataset.gameInput, input.value);
+  if (!matches.length) return;
+  if (event.key === "ArrowDown") input.dataset.active = (Number(input.dataset.active || 0) + 1) % matches.length;
+  if (event.key === "ArrowUp") input.dataset.active = (Number(input.dataset.active || 0) - 1 + matches.length) % matches.length;
+  if (event.key === "Enter") {
+    addGameToList(input.dataset.gameInput, state.games.includes(input.value) ? input.value : matches[Number(input.dataset.active || 0)]);
+    return;
+  }
+  updateGamePicker(input);
 });
 
 addEventListener("popstate", () => {

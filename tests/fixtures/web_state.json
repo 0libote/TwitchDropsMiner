@@ -110,7 +110,7 @@
   "messages": ["Inventory loaded: 4 campaigns", "Watching AuroraPlays", "Drop progress updated to 63%"],
   "notifications": [{"title": "Drop claimed", "message": "Explorer Badge was added to your inventory."}],
   "networkIssues": [],
-  "games": ["Fortnite", "Just Chatting", "Minecraft", "VALORANT"],
+  "games": ["ARC Raiders", "Fortnite", "Just Chatting", "Minecraft", "Pokémon GO", "VALORANT", "World of Warcraft"],
   "settings": {
     "priority": ["Just Chatting", "VALORANT", "Minecraft"],
     "exclude": ["Fortnite"],

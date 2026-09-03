@@ -128,7 +128,11 @@ class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
             response = await client.get("/assets/app.js?v=test")
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers["Cache-Control"], "no-cache")
-            self.assertIn("function renderRoute", await response.text())
+            script = await response.text()
+            self.assertIn("function renderRoute", script)
+            self.assertIn('role="combobox"', script)
+            self.assertIn('event.key === "ArrowDown"', script)
+            self.assertNotIn("<datalist", script)
         finally:
             await client.close()
 
