@@ -72,14 +72,15 @@ Useful options:
 
 ## Desktop builds
 
-Download the latest version from
-[GitHub Releases](https://github.com/0libote/TwitchDropsMiner/releases). Choose the archive for
+Download the latest version from the single
+[Latest prerelease](https://github.com/0libote/TwitchDropsMiner/releases/tag/latest). Choose the archive for
 Windows x64, macOS Apple Silicon, or macOS Intel. Each archive is started and health-checked on
 the matching hosted runner before publication.
 
-Pushing a `v*` version tag publishes those same tested archives as a GitHub prerelease. The apps
-are not code-signed or notarized yet, so Windows SmartScreen or macOS Gatekeeper may show an
-unknown-publisher warning. Signing should be added only after the product name and publisher
+Pushing a `v*` version tag updates that prerelease and moves its `latest` tag to the tested commit.
+The version tag remains available for source history, while older prerelease entries are removed.
+The apps are not code-signed or notarized yet, so Windows SmartScreen or macOS Gatekeeper may show
+an unknown-publisher warning. Signing should be added only after the product name and publisher
 identity are final.
 
 ## Run with Docker

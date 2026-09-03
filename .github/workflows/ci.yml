@@ -155,15 +155,55 @@ jobs:
               --name "$artifact" \
               --dir "artifacts/$artifact"
           done
-      - name: Create GitHub prerelease
+      - name: Update latest GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -t archives < <(find artifacts -type f -name '*.zip' -print)
           test "${#archives[@]}" -eq 3
-          gh release create "$GITHUB_REF_NAME" "${archives[@]}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --prerelease \
-            --generate-notes \
-            --title "Twitch Drops Miner Next $GITHUB_REF_NAME"
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f target_commitish="$GITHUB_SHA" \
+            --jq .body > generated-notes.md
+          {
+            printf 'Latest prerelease build: `%s`\n\n' "$GITHUB_REF_NAME"
+            cat generated-notes.md
+          } > release-notes.md
+
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/latest" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" \
+              -f sha="$GITHUB_SHA" \
+              -F force=true >/dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/latest" \
+              -f sha="$GITHUB_SHA" >/dev/null
+          fi
+
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload latest "${archives[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit latest \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Twitch Drops Miner Next — Latest prerelease ($GITHUB_REF_NAME)" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --latest
+          else
+            gh release create latest "${archives[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Twitch Drops Miner Next — Latest prerelease ($GITHUB_REF_NAME)" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --latest
+          fi
+
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease and .tagName != "latest") | .tagName' |
+          while IFS= read -r old_tag; do
+            gh release delete "$old_tag" --repo "$GITHUB_REPOSITORY" --yes
+          done
