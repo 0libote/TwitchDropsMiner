@@ -10,6 +10,7 @@ let campaignFilter = "available";
 let campaignQuery = "";
 let settingsDraft = null;
 let settingsDirty = false;
+let currentPath = location.pathname;
 
 const routeMeta = {
   dashboard: ["Miner", "Dashboard"],
@@ -125,6 +126,12 @@ function statusKind() {
 function showApplication() {
   const login = state.login || {};
   const needsActivation = Boolean(login.activationCode && !login.userId);
+  if (!needsActivation && !login.userId && !state.canLogout) {
+    $("#loading").classList.remove("hidden");
+    $("#auth-view").classList.add("hidden");
+    $("#app-shell").classList.add("hidden");
+    return;
+  }
   $("#loading").classList.add("hidden");
   $("#auth-view").classList.toggle("hidden", !needsActivation);
   $("#app-shell").classList.toggle("hidden", needsActivation);
@@ -279,6 +286,7 @@ function campaignDetailTemplate(campaign) {
       </div></section>
       <aside>
         <section class="panel side-note"><h3>Availability</h3><p>Starts ${esc(formatDate(campaign.startsAt))}</p><p>Ends ${esc(formatDate(campaign.endsAt))}</p></section>
+        ${!campaign.linked && campaign.linkUrl ? `<section class="panel side-note" style="margin-top:14px"><h3>Account connection required</h3><p>Connect the game account associated with this campaign before its rewards can be earned.</p><a class="button primary small" href="${esc(campaign.linkUrl)}" target="_blank" rel="noreferrer" style="display:inline-block;margin-top:13px">Open connection page</a></section>` : ""}
         <section class="panel side-note" style="margin-top:14px"><h3>Mining preference</h3><p>The miner chooses games, so this preference applies to every eligible campaign for ${esc(campaign.game)}.</p><div class="button-row" style="margin-top:14px"><button class="button primary small" data-preference="priority" data-game="${esc(campaign.game)}" ${isPriority ? "disabled" : ""}>${isPriority ? "Prioritized" : "Mine this game first"}</button><button class="button secondary small" data-preference="exclude" data-game="${esc(campaign.game)}" ${isExcluded ? "disabled" : ""}>${isExcluded ? "Excluded" : "Exclude game"}</button></div></section>
       </aside>
     </div>`;
@@ -416,6 +424,7 @@ function navigate(path, {replace = false, focus = true} = {}) {
   settingsDirty = false;
   if (replace) history.replaceState({}, "", path);
   else history.pushState({}, "", path);
+  currentPath = path;
   activeRoute = null;
   renderRoute();
   scrollTo(0, 0);
@@ -578,10 +587,21 @@ document.addEventListener("keydown", event => {
 });
 
 addEventListener("popstate", () => {
+  if (settingsDirty && !confirm("Discard your unsaved changes?")) {
+    history.pushState({}, "", currentPath);
+    return;
+  }
+  currentPath = location.pathname;
   activeRoute = null;
   settingsDirty = false;
   renderRoute();
   scrollTo(0, 0);
+});
+
+addEventListener("beforeunload", event => {
+  if (!settingsDirty) return;
+  event.preventDefault();
+  event.returnValue = "";
 });
 
 const events = new EventSource("/api/events");

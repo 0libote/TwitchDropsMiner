@@ -67,6 +67,7 @@ def _campaign_json(campaign: DropsCampaign) -> dict[str, Any]:
         "game": campaign.game.name,
         "gameId": campaign.game.id,
         "image": str(campaign.image_url),
+        "linkUrl": str(campaign.link_url),
         "linked": campaign.linked,
         "eligible": campaign.eligible,
         "finished": campaign.finished,
@@ -437,7 +438,7 @@ class WebUI:
     def stop(self) -> None:
         self.progress.stop_timer()
 
-    async def _serve(self) -> None:
+    def _build_app(self) -> web.Application:
         app = web.Application(middlewares=[self._security_headers])
         for path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics"):
             app.router.add_get(path, self._index)
@@ -450,6 +451,10 @@ class WebUI:
         app.router.add_put("/api/settings", self._update_settings)
         app.router.add_post("/api/login", self._login)
         app.router.add_static("/assets", WEB_ROOT, append_version=True)
+        return app
+
+    async def _serve(self) -> None:
+        app = self._build_app()
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
         site = web.TCPSite(self._runner, self.host, self.port)
@@ -467,6 +472,8 @@ class WebUI:
     @web.middleware
     async def _security_headers(self, request: web.Request, handler: Any) -> web.StreamResponse:
         response = await handler(request)
+        if not request.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-cache"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"

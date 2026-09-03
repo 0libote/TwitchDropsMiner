@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import sys
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
 from yarl import URL
 
 
@@ -84,6 +86,67 @@ class HeadlessImportTests(unittest.TestCase):
         cookie_jar.filter_cookies.return_value = {"auth-token": "token"}
         _save_authenticated_cookies(cookie_jar, URL("https://www.twitch.tv"))
         cookie_jar.save.assert_called_once()
+
+
+class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dashboard_routes_support_direct_navigation(self) -> None:
+        from utils import AwaitableValue
+        from webui import WebUI
+
+        settings = SimpleNamespace(
+            priority=[],
+            exclude=set(),
+            priority_mode=SimpleNamespace(name="PRIORITY_ONLY"),
+            connection_quality=1,
+            tray_notifications=True,
+            enable_badges_emotes=False,
+            available_drops_check=False,
+            proxy="",
+        )
+        twitch = SimpleNamespace(
+            watching_channel=AwaitableValue(),
+            inventory=[],
+            channels={},
+            settings=settings,
+            can_watch=Mock(),
+        )
+        client = TestClient(TestServer(WebUI(twitch)._build_app()))
+        await client.start_server()
+        try:
+            for path in (
+                "/",
+                "/campaigns",
+                "/campaigns/example",
+                "/mining",
+                "/settings",
+                "/diagnostics",
+            ):
+                response = await client.get(path)
+                self.assertEqual(response.status, 200, path)
+                self.assertEqual(response.headers["Cache-Control"], "no-cache")
+                self.assertIn('id="app-shell"', await response.text())
+            response = await client.get("/assets/app.js?v=test")
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers["Cache-Control"], "no-cache")
+            self.assertIn("function renderRoute", await response.text())
+        finally:
+            await client.close()
+
+    def test_web_preview_fixture_has_current_snapshot_shape(self) -> None:
+        import json
+
+        fixture = json.loads(
+            (Path(__file__).parent / "fixtures" / "web_state.json").read_text()
+        )
+        self.assertEqual(
+            {"activeDrop", "campaigns", "channels", "settings", "summary"},
+            {
+                key
+                for key in fixture
+                if key in {"activeDrop", "campaigns", "channels", "settings", "summary"}
+            },
+        )
+        self.assertTrue(fixture["campaigns"][0]["drops"])
 
 
 class WebSettingsTests(unittest.IsolatedAsyncioTestCase):

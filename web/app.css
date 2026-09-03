@@ -240,8 +240,8 @@ input::placeholder { color: #777480; }
   .now-card h2 { font-size: 25px; }
   .watching-card .panel-body { grid-template-columns: 1fr 1fr; }
   .campaign-toolbar { grid-template-columns: 1fr; }
-  .campaign-toolbar .segmented { overflow-x: auto; flex-wrap: nowrap; }
-  .campaign-toolbar .segmented button { flex: 0 0 auto; }
+  .campaign-toolbar .segmented { overflow: visible; flex-wrap: wrap; }
+  .campaign-toolbar .segmented button { flex: 1 1 calc(33.333% - 3px); padding-inline: 6px; }
   .campaign-row { grid-template-columns: 45px minmax(0, 1fr) auto; gap: 11px; min-height: 77px; padding: 10px 11px; }
   .campaign-image { width: 43px; height: 53px; }
   .campaign-row .campaign-progress, .campaign-row .campaign-time { display: none; }
