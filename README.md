@@ -66,9 +66,22 @@ Useful options:
 --host ADDRESS       Bind address; defaults to 127.0.0.1
 --port PORT          Dashboard port; defaults to 8080
 --no-browser         Do not launch a browser automatically
+--tray               Start minimized with a Windows system-tray icon
 --legacy-ui          Run the original Tkinter interface
 --log                Write log.txt in the data directory
 ```
+
+Operational environment variables:
+
+```text
+TDM_LOG=1                 Enable the persistent log
+TDM_WEB_TOKEN=secret      Protect the dashboard with HTTP Basic auth (user: tdm)
+TDM_WEBHOOK_URL=https://  Send claim, network and watchdog events as JSON
+```
+
+The dashboard exposes `/healthz` for liveness, `/readyz` for authenticated Twitch readiness,
+`/api/diagnostics` for redacted runtime details, and `/metrics` for basic Prometheus counters.
+See [ROADMAP.md](ROADMAP.md) for the current operational QoL feature status and planned upgrades.
 
 ## Desktop builds
 

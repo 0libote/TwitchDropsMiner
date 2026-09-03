@@ -49,6 +49,13 @@ function formatDate(value, relative = false) {
   return new Intl.DateTimeFormat(undefined, {dateStyle: "medium", timeStyle: "short"}).format(date);
 }
 
+function formatDuration(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return [days && `${days}d`, hours && `${hours}h`, `${minutes}m`].filter(Boolean).join(" ");
+}
+
 function toast(message, error = false) {
   const node = $("#toast");
   clearTimeout(toastTimer);
@@ -73,6 +80,8 @@ function cloneSettings(values) {
     trayNotifications: values.trayNotifications,
     enableBadgesEmotes: values.enableBadgesEmotes,
     availableDropsCheck: values.availableDropsCheck,
+    autostart: values.autostart,
+    keepAwake: values.keepAwake,
     proxy: values.proxy,
   };
 }
@@ -187,6 +196,7 @@ function dashboardTemplate() {
         <div class="panel-body" id="session-facts"></div>
       </section>
     </div>
+    <div class="diagnostic-grid" id="stat-cards"></div>
     <div class="section-title"><div><h2>Mining plan</h2><p class="muted">Priority games are tried in this order</p></div><a class="button quiet small" href="/mining" data-route>Edit plan</a></div>
     <section class="panel queue-preview" id="queue-preview"></section>
     <div class="section-title"><div><h2>Recent activity</h2><p class="muted">The latest useful miner events</p></div><a class="button quiet small" href="/diagnostics" data-route>View diagnostics</a></div>
@@ -207,7 +217,7 @@ function updateDashboard() {
       <h2 id="now-heading">${esc(heading)}</h2>
       <p class="now-meta">${esc(explanation)}</p>
       <div class="progress" role="progressbar" aria-label="Current drop progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round((drop?.progress || 0) * 100)}"><span style="width:${(drop?.progress || 0) * 100}%"></span></div>
-      <div class="progress-meta"><span>${Math.round((drop?.progress || 0) * 100)}% complete</span><span>${drop ? esc(formatMinutes(drop.remainingMinutes)) : "—"}</span></div>
+      <div class="progress-meta"><span>${Math.round((drop?.progress || 0) * 100)}% complete</span><span>${drop ? `${esc(formatMinutes(drop.remainingMinutes))} · around ${esc(formatDate(new Date(Date.now() + drop.remainingMinutes * 60000)))}` : "—"}</span></div>
     </div>
     ${rewardImage ? `<img class="reward-image" src="${esc(rewardImage)}" alt="${esc(drop.rewards)}">` : `<div class="reward-fallback" aria-hidden="true">◆</div>`}`;
 
@@ -219,7 +229,13 @@ function updateDashboard() {
   const priority = state.settings.priority;
   $("#queue-preview").innerHTML = priority.length ? priority.slice(0, 5).map((game, index) => `<div class="queue-row"><span class="queue-number">${index + 1}</span><span><strong>${esc(game)}</strong><small>${index === 0 ? "First choice" : "After higher priorities"}</small></span>${campaign?.game === game ? '<span class="status-badge good">Mining</span>' : ""}</div>`).join("") : `<div class="empty-state"><div><strong>No priority games</strong><p>The miner is using its automatic ordering rule.</p></div></div>`;
 
-  const events = [...(state.notifications || []).map(item => ({title: item.title, text: item.message})), ...(state.messages || []).slice(-4).reverse().map(text => ({title: "Miner", text}))].slice(0, 5);
+  const stats = state.stats || {session: {}, lifetime: {}, uptimeSeconds: 0};
+  $("#stat-cards").innerHTML = `
+    <article class="panel diagnostic-card"><span>Uptime</span><strong>${esc(formatDuration(stats.uptimeSeconds || 0))}</strong><small>Current process</small></article>
+    <article class="panel diagnostic-card"><span>Drops claimed</span><strong>${stats.session.drops_claimed || 0}</strong><small>${stats.lifetime.drops_claimed || 0} lifetime</small></article>
+    <article class="panel diagnostic-card"><span>Mining time</span><strong>${stats.session.mining_minutes || 0}m</strong><small>${stats.lifetime.mining_minutes || 0}m lifetime</small></article>`;
+
+  const events = [...(state.notifications || []).map(item => ({title: item.title, text: item.message})), ...(state.messages || []).slice(-4).reverse().map(item => ({title: "Miner", text: item.message || item}))].slice(0, 5);
   $("#activity-preview").innerHTML = events.length ? events.map(item => `<div class="activity-row"><span class="status-dot live"></span><span><strong>${esc(item.title)}</strong><small>${esc(item.text)}</small></span></div>`).join("") : `<div class="empty-state"><span>No activity yet</span></div>`;
 }
 
@@ -230,6 +246,12 @@ function campaignBadge(campaign) {
   if (campaign.status === "active") return ["Active", "good"];
   if (campaign.status === "upcoming") return ["Upcoming", "warn"];
   return ["Expired", ""];
+}
+
+function feasibility(campaign) {
+  if (campaign.finished || campaign.status !== "active" || !campaign.remainingMinutes) return "";
+  const available = (new Date(campaign.endsAt) - Date.now()) / 60000;
+  return available < campaign.remainingMinutes ? '<div class="muted" style="margin-top:5px;font-size:11px">May not finish in time</div>' : "";
 }
 
 function campaignListTemplate() {
@@ -263,7 +285,7 @@ function updateCampaignList() {
       <div class="campaign-name"><a href="/campaigns/${encodeURIComponent(campaign.id)}" data-route>${esc(campaign.name)}</a><small>${esc(campaign.game)}</small></div>
       <div class="campaign-progress"><small>${campaign.claimedDrops}/${campaign.totalDrops} drops · ${Math.round(campaign.progress * 100)}%</small><div class="progress"><span style="width:${campaign.progress * 100}%"></span></div></div>
       <div class="campaign-time">${campaign.status === "upcoming" ? "Starts" : "Ends"} ${esc(formatDate(campaign.status === "upcoming" ? campaign.startsAt : campaign.endsAt, true))}<small>${esc(formatDate(campaign.status === "upcoming" ? campaign.startsAt : campaign.endsAt))}</small></div>
-      <div><span class="status-badge ${kind}">${esc(label)}</span>${prioritized ? '<div class="muted" style="margin-top:5px;font-size:11px">Prioritized</div>' : ""}</div>
+      <div><span class="status-badge ${kind}">${esc(label)}</span>${prioritized ? '<div class="muted" style="margin-top:5px;font-size:11px">Prioritized</div>' : ""}${feasibility(campaign)}</div>
     </article>`;
   }).join("") : `<div class="empty-state"><div><strong>No matching campaigns</strong><p>Try another search or filter.</p></div></div>`;
 }
@@ -371,6 +393,11 @@ function settingsTemplate() {
           <div class="panel-header"><div><h2>Notifications</h2><p class="muted">Choose what appears in the activity feed</p></div></div>
           <div class="setting-row toggle-row"><div><strong>Claim notifications</strong><p>Record a notification whenever a drop is claimed.</p></div><label class="switch"><input type="checkbox" data-setting="trayNotifications" ${settingsDraft.trayNotifications ? "checked" : ""} aria-label="Show claim notifications"><span></span></label></div>
         </section>
+        ${state.system.platform.startsWith("Windows") ? `<section class="panel setting-section">
+          <div class="panel-header"><div><h2>Windows</h2><p class="muted">Desktop convenience and reliability</p></div></div>
+          <div class="setting-row toggle-row"><div><strong>Start with Windows</strong><p>Launch minimized to the system tray after sign-in.</p></div><label class="switch"><input type="checkbox" data-setting="autostart" ${settingsDraft.autostart ? "checked" : ""}><span></span></label></div>
+          <div class="setting-row toggle-row"><div><strong>Keep PC awake while mining</strong><p>Prevent system sleep only while a drop is active.</p></div><label class="switch"><input type="checkbox" data-setting="keepAwake" ${settingsDraft.keepAwake ? "checked" : ""}><span></span></label></div>
+        </section>` : ""}
         <section class="panel setting-section">
           <div class="panel-header"><div><h2>Network</h2><p class="muted">Usually best left at the defaults</p></div></div>
           <div class="setting-row"><div><label for="connection-quality"><strong>Connection tolerance</strong></label><p>Higher values give slow or unreliable networks more time.</p></div><div><input id="connection-quality" type="range" min="1" max="6" value="${settingsDraft.connectionQuality}" data-setting="connectionQuality"><div class="progress-meta"><span>Fast</span><output id="quality-output">${settingsDraft.connectionQuality} / 6</output><span>Tolerant</span></div></div></div>
@@ -394,12 +421,15 @@ function diagnosticsTemplate() {
       <article class="panel diagnostic-card"><span>Miner state</span><strong>${esc(state.activity || "Unknown")}</strong><small>${esc(state.status || "No status message")}</small></article>
       <article class="panel diagnostic-card"><span>Event sockets</span><strong>${state.websockets.length || 0}</strong><small>${socketTopics} subscribed topics</small></article>
       <article class="panel diagnostic-card"><span>Dashboard stream</span><strong>${connected ? "Connected" : "Reconnecting"}</strong><small>State revision ${state.revision}</small></article>
+      <article class="panel diagnostic-card"><span>Version</span><strong>${esc(state.system.version)}</strong><small>Engine ${esc(state.system.upstreamVersion)}</small></article>
+      <article class="panel diagnostic-card"><span>Watch failures</span><strong>${state.stats.lifetime.watch_failures || 0}</strong><small>${state.stats.lifetime.watch_heartbeats || 0} heartbeats</small></article>
+      <article class="panel diagnostic-card"><span>Last progress</span><strong>${esc(formatDate(state.stats.lifetime.last_progress_at, true))}</strong><small>${esc(formatDate(state.stats.lifetime.last_progress_at))}</small></article>
     </div>
     <section class="panel">
-      <div class="panel-header"><div><h2>Event log</h2><p class="muted">Newest events appear first</p></div><button class="button secondary small" type="button" data-copy-log>Copy log</button></div>
-      <div class="log" id="activity-log">${notifications.map(item => `<p class="notification"><strong>${esc(item.title)}</strong> ${esc(item.message)}</p>`).join("")}${lines.map(line => `<p>${esc(line)}</p>`).join("") || (!notifications.length ? "<p>Waiting for miner events…</p>" : "")}</div>
+      <div class="panel-header"><div><h2>Event log</h2><p class="muted">Newest events appear first</p></div><div class="button-row"><button class="button secondary small" type="button" data-copy-log>Copy log</button><a class="button secondary small" href="/api/diagnostics" download>Download</a></div></div>
+      <div class="log" id="activity-log">${notifications.map(item => `<p class="notification"><strong>${esc(formatDate(item.time))} · ${esc(item.title)}</strong> ${esc(item.message)}</p>`).join("")}${lines.map(item => `<p><small>${esc(formatDate(item.time))}</small> ${esc(item.message || item)}</p>`).join("") || (!notifications.length ? "<p>Waiting for miner events…</p>" : "")}</div>
     </section>
-    <section class="panel side-note" style="margin-top:14px"><h3>Network health</h3><p>${state.networkIssues?.length ? `Requests are failing for ${esc(state.networkIssues.join(", "))}.` : "No repeated Twitch network failures have been detected."}</p></section>`;
+    <section class="panel side-note" style="margin-top:14px"><h3>Network health</h3><p>${state.networkIssues?.length ? `Requests are failing for ${esc(state.networkIssues.join(", "))}.` : "No repeated Twitch network failures have been detected."}</p><p class="muted">${esc(state.system.platform)} · Python ${esc(state.system.python)} · ${state.system.authenticationEnabled ? "Dashboard authentication enabled" : "Dashboard authentication disabled"}</p><div class="button-row" style="margin-top:12px"><a class="button secondary small" href="/api/export?stats=1" download>Export settings & stats</a>${state.system.platform.startsWith("Windows") ? '<button class="button secondary small" data-action="open-data">Open data folder</button><button class="button secondary small" data-action="open-log">Open log</button>' : ""}</div><label class="button quiet small" style="display:inline-block;margin-top:10px">Import settings<input type="file" accept="application/json" data-import-settings hidden></label></section>`;
 }
 
 function renderRoute(force = false) {
@@ -635,6 +665,14 @@ document.addEventListener("focusin", event => {
 });
 
 document.addEventListener("change", event => {
+  if (event.target.matches("[data-import-settings]")) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    file.text().then(text => request("/api/import", {method: "POST", body: text}))
+      .then(() => { toast("Settings imported"); location.reload(); })
+      .catch(error => toast(error.message || "Import failed", true));
+    return;
+  }
   const setting = event.target.closest("[data-setting]");
   if (!setting) return;
   settingsDraft[setting.dataset.setting] = setting.type === "checkbox" ? setting.checked : setting.type === "range" ? Number(setting.value) : setting.value;

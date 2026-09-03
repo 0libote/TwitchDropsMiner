@@ -1,21 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
+import os
+import platform
+import secrets
+import sys
 import webbrowser
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from time import monotonic
 from typing import Any, TYPE_CHECKING
 
+import aiohttp
 from aiohttp import web
 from yarl import URL
 
-from constants import PriorityMode, State
+from constants import DATA_DIR, LOG_PATH, PriorityMode, State
+from fork_version import __version__
+from platform_qol import NativeTray, open_path, set_keep_awake, set_windows_autostart
+from version import __version__ as upstream_version
 
 if TYPE_CHECKING:
     from channel import Channel
@@ -204,23 +213,30 @@ class HelpView:
 class TrayView(_Reactive):
     def change_icon(self, state: str) -> None:
         self.manager.activity_state = state
+        set_keep_awake(state == "active" and self.manager._twitch.settings.keep_awake)
+        self.manager.native_tray.update(self.manager._tray_title(), state)
         self.changed()
 
     def update_title(self, drop: TimedDrop | None) -> None:
-        del drop
+        self.manager.native_tray.update(self.manager._tray_title(drop), self.manager.activity_state)
         self.changed()
 
     def notify(self, message: str, title: str) -> None:
         if not self.manager._twitch.settings.tray_notifications:
             return
-        self.manager.notifications.appendleft({"title": title, "message": message})
+        self.manager.notifications.appendleft(
+            {"time": datetime.now(timezone.utc).isoformat(), "title": title, "message": message}
+        )
+        self.manager.native_tray.notify(message, title)
+        self.manager.send_webhook("claim", title, message)
         self.changed()
 
     def restore(self) -> None:
         return
 
     def stop(self) -> None:
-        return
+        self.manager.native_tray.stop()
+        set_keep_awake(False)
 
 
 class ProgressView(_Reactive):
@@ -298,6 +314,7 @@ class InventoryView(_Reactive):
         self.changed()
 
     def clear(self) -> None:
+        self.manager._twitch.stats.last_inventory_at = datetime.now(timezone.utc).isoformat()
         self.changed()
 
 
@@ -322,11 +339,14 @@ class WebUI:
         host: str = "127.0.0.1",
         port: int = 8080,
         open_browser: bool = True,
+        tray: bool = False,
     ) -> None:
         self._twitch = twitch
         self.host = host
         self.port = port
         self.open_browser = open_browser
+        self.auth_token = os.environ.get("TDM_WEB_TOKEN", "")
+        self.webhook_url = os.environ.get("TDM_WEBHOOK_URL", "")
         self._close_requested = asyncio.Event()
         self._server_task: asyncio.Task[None] | None = None
         self._runner: web.AppRunner | None = None
@@ -343,9 +363,14 @@ class WebUI:
             "activationCode": None,
         }
         self.can_logout = False
-        self.messages: deque[str] = deque(maxlen=250)
+        self.messages: deque[dict[str, str]] = deque(maxlen=250)
         self.notifications: deque[dict[str, str]] = deque(maxlen=20)
         self._network_failures: dict[str, int] = {}
+        url_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+        self.dashboard_url = f"http://{url_host}:{port}/"
+        self.native_tray = NativeTray(self.dashboard_url, self.close)
+        self._tray_enabled = tray
+        self._clock_task: asyncio.Task[None] | None = None
         self.status = StatusView(self)
         self.websockets = WebsocketView(self)
         self.login = LoginView(self)
@@ -384,6 +409,11 @@ class WebUI:
             )
             for channel in self._twitch.channels.values()
         ]
+        stats = getattr(self._twitch, "stats", None)
+        stats_snapshot = stats.snapshot() if stats is not None else {
+            "startedAt": None, "uptimeSeconds": 0, "session": {}, "lifetime": {},
+            "lastInventoryAt": None, "lastRecoveryAt": None,
+        }
         return {
             "revision": self._revision,
             "status": self.status_text,
@@ -400,6 +430,16 @@ class WebUI:
             ],
             "messages": list(self.messages),
             "notifications": list(self.notifications),
+            "stats": stats_snapshot,
+            "system": {
+                "version": __version__,
+                "upstreamVersion": upstream_version,
+                "python": platform.python_version(),
+                "platform": platform.platform(),
+                "packaged": bool(getattr(sys, "frozen", False)),
+                "dataDirectory": str(DATA_DIR),
+                "authenticationEnabled": bool(self.auth_token),
+            },
             "networkIssues": sorted(
                 host for host, failures in self._network_failures.items() if failures >= 2
             ),
@@ -412,6 +452,8 @@ class WebUI:
                 "trayNotifications": settings.tray_notifications,
                 "enableBadgesEmotes": settings.enable_badges_emotes,
                 "availableDropsCheck": settings.available_drops_check,
+                "autostart": getattr(settings, "autostart_tray", False),
+                "keepAwake": getattr(settings, "keep_awake", False),
                 "proxy": str(settings.proxy),
             },
             "summary": {
@@ -426,6 +468,7 @@ class WebUI:
         if self._server_task is None:
             self._server_task = asyncio.create_task(self._serve())
             self._server_task.add_done_callback(self._server_stopped)
+            self._clock_task = asyncio.create_task(self._clock_monitor())
 
     def _server_stopped(self, task: asyncio.Task[None]) -> None:
         if task.cancelled() or self.close_requested:
@@ -437,13 +480,22 @@ class WebUI:
 
     def stop(self) -> None:
         self.progress.stop_timer()
+        if self._clock_task is not None:
+            self._clock_task.cancel()
+        self.native_tray.stop()
+        set_keep_awake(False)
 
     def _build_app(self) -> web.Application:
-        app = web.Application(middlewares=[self._security_headers])
+        app = web.Application(middlewares=[self._authentication, self._security_headers])
         for path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics"):
             app.router.add_get(path, self._index)
         app.router.add_get("/campaigns/{campaign_id}", self._index)
         app.router.add_get("/healthz", self._health)
+        app.router.add_get("/readyz", self._ready)
+        app.router.add_get("/metrics", self._metrics)
+        app.router.add_get("/api/diagnostics", self._diagnostics)
+        app.router.add_get("/api/export", self._export)
+        app.router.add_post("/api/import", self._import)
         app.router.add_get("/api/state", self._state)
         app.router.add_get("/api/events", self._events)
         app.router.add_post("/api/actions/{action}", self._action)
@@ -460,14 +512,25 @@ class WebUI:
         site = web.TCPSite(self._runner, self.host, self.port)
         try:
             await site.start()
-            url_host = "127.0.0.1" if self.host in {"0.0.0.0", "::"} else self.host
-            url = f"http://{url_host}:{self.port}/"
-            logger.info("Dashboard: %s", url)
+            logger.info("Dashboard: %s", self.dashboard_url)
+            if self._tray_enabled:
+                self.native_tray.start()
             if self.open_browser:
-                asyncio.get_running_loop().run_in_executor(None, partial(webbrowser.open, url))
+                asyncio.get_running_loop().run_in_executor(
+                    None, partial(webbrowser.open, self.dashboard_url)
+                )
             await self._close_requested.wait()
         finally:
             await self._runner.cleanup()
+
+    @web.middleware
+    async def _authentication(self, request: web.Request, handler: Any) -> web.StreamResponse:
+        if not self.auth_token or request.path == "/healthz":
+            return await handler(request)
+        expected = "Basic " + base64.b64encode(f"tdm:{self.auth_token}".encode()).decode()
+        if not secrets.compare_digest(request.headers.get("Authorization", ""), expected):
+            raise web.HTTPUnauthorized(headers={"WWW-Authenticate": 'Basic realm="TDM dashboard"'})
+        return await handler(request)
 
     @web.middleware
     async def _security_headers(self, request: web.Request, handler: Any) -> web.StreamResponse:
@@ -490,6 +553,49 @@ class WebUI:
     async def _health(self, request: web.Request) -> web.Response:
         del request
         return web.json_response({"status": "ok"})
+
+    async def _ready(self, request: web.Request) -> web.Response:
+        del request
+        pool = getattr(getattr(self._twitch, "websocket", None), "websockets", ())
+        sockets_ready = bool(pool) and all(socket.connected for socket in pool)
+        ready = bool(self.login_state.get("userId")) and sockets_ready
+        return web.json_response({"status": "ready" if ready else "starting"}, status=200 if ready else 503)
+
+    async def _metrics(self, request: web.Request) -> web.Response:
+        del request
+        stats = self._twitch.stats.snapshot()
+        lifetime = stats["lifetime"]
+        lines = [
+            f'tdm_uptime_seconds {stats["uptimeSeconds"]}',
+            f'tdm_drops_claimed_total {lifetime["drops_claimed"]}',
+            f'tdm_mining_minutes_total {lifetime["mining_minutes"]}',
+            f'tdm_channel_switches_total {lifetime["channel_switches"]}',
+            f'tdm_watch_failures_total {lifetime["watch_failures"]}',
+        ]
+        return web.Response(text="\n".join(lines) + "\n", content_type="text/plain")
+
+    async def _diagnostics(self, request: web.Request) -> web.Response:
+        del request
+        snapshot = self.snapshot()
+        return web.json_response({key: snapshot[key] for key in (
+            "status", "activity", "websockets", "networkIssues", "stats", "system"
+        )})
+
+    async def _export(self, request: web.Request) -> web.Response:
+        settings = self.snapshot()["settings"]
+        settings["proxy"] = ""  # Proxy URLs may contain credentials; never export them.
+        payload: dict[str, Any] = {"settings": settings}
+        if request.query.get("stats") == "1":
+            payload["stats"] = self._twitch.stats.snapshot()["lifetime"]
+        return web.json_response(payload, headers={
+            "Content-Disposition": 'attachment; filename="tdm-export.json"'
+        })
+
+    async def _import(self, request: web.Request) -> web.Response:
+        payload = await request.json()
+        values = payload.get("settings", payload)
+        request._read_bytes = json.dumps(values).encode()
+        return await self._update_settings(request)
 
     async def _state(self, request: web.Request) -> web.Response:
         del request
@@ -533,6 +639,10 @@ class WebUI:
             self._twitch.change_state(State.RESTART)
         elif action == "shutdown":
             self.close()
+        elif action == "open-data":
+            open_path(DATA_DIR)
+        elif action == "open-log":
+            open_path(LOG_PATH if LOG_PATH.exists() else DATA_DIR)
         else:
             raise web.HTTPNotFound(text="Unknown action")
         return web.json_response({"ok": True})
@@ -571,9 +681,13 @@ class WebUI:
             "trayNotifications": "tray_notifications",
             "enableBadgesEmotes": "enable_badges_emotes",
             "availableDropsCheck": "available_drops_check",
+            "keepAwake": "keep_awake",
         }.items():
             if json_name in payload:
                 setattr(settings, attr_name, bool(payload[json_name]))
+        if "autostart" in payload:
+            settings.autostart_tray = bool(payload["autostart"])
+            set_windows_autostart(settings.autostart_tray)
         if "proxy" in payload:
             proxy = URL(str(payload["proxy"]).strip())
             try:
@@ -646,7 +760,9 @@ class WebUI:
 
     def print(self, message: str) -> None:
         logger.info("%s", message)
-        self.messages.append(message)
+        self.messages.append({
+            "time": datetime.now(timezone.utc).isoformat(), "level": "info", "message": message
+        })
         self.changed()
 
     def report_network_issue(self, url: str) -> None:
@@ -654,8 +770,59 @@ class WebUI:
             failures = self._network_failures.get(host, 0) + 1
             self._network_failures[host] = failures
             if failures == 2:
+                self.send_webhook("network_failure", "Twitch network problem", f"Requests to {host} are failing")
                 self.changed()
 
     def report_network_recovery(self, url: str) -> None:
         if (host := URL(url).host) and self._network_failures.pop(host, 0) >= 2:
+            if stats := getattr(self._twitch, "stats", None):
+                stats.last_recovery_at = datetime.now(timezone.utc).isoformat()
+            self.send_webhook("network_recovery", "Twitch network recovered", f"Requests to {host} recovered")
             self.changed()
+
+    def _tray_title(self, drop: TimedDrop | None = None) -> str:
+        drop = drop or self.progress.drop
+        if drop is None:
+            return f"Twitch Drops Miner Next — {self.status_text}"
+        return f"Twitch Drops Miner Next — {drop.rewards_text()} {drop.progress:.0%}"
+
+    def send_webhook(self, event: str, title: str, message: str) -> None:
+        if not self.webhook_url:
+            return
+
+        async def send() -> None:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        self.webhook_url,
+                        json={"event": event, "title": title, "message": message},
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status >= 400:
+                            logger.warning("Webhook returned HTTP %s", response.status)
+            except Exception as exc:
+                logger.warning("Webhook delivery failed: %s", exc)
+
+        asyncio.create_task(send())
+
+    async def _clock_monitor(self) -> None:
+        """Refresh after suspend/resume and recover once when mining appears stalled."""
+        previous = monotonic()
+        last_watchdog = 0.0
+        while True:
+            await asyncio.sleep(60)
+            now = monotonic()
+            if now - previous > 180:
+                self.print("System resumed; refreshing Twitch state")
+                self._twitch.change_state(State.INVENTORY_FETCH)
+            previous = now
+            displayed_at = self.progress._displayed_at
+            if self.progress.drop is not None and displayed_at is not None:
+                if now - displayed_at >= 900 and now - last_watchdog >= 900:
+                    last_watchdog = now
+                    self.print("Mining progress appears stalled; refreshing inventory")
+                    self.send_webhook(
+                        "mining_stalled", "Mining progress stalled",
+                        "No confirmed progress for 15 minutes; an automatic refresh was requested.",
+                    )
+                    self._twitch.change_state(State.INVENTORY_FETCH)

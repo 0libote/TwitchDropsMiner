@@ -77,9 +77,13 @@ if __name__ == "__main__":
         version=f"Twitch Drops Miner Next {__version__} (upstream engine {upstream_version})",
     )
     parser.add_argument("-v", dest="_verbose", action="count", default=0)
-    parser.add_argument("--log", action="store_true", help="write logs to the data directory")
+    parser.add_argument(
+        "--log", action="store_true",
+        default=os.environ.get("TDM_LOG", "").lower() in {"1", "true", "yes"},
+        help="write logs to the data directory",
+    )
     parser.add_argument("--dump", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--tray", action="store_true", help="start the legacy UI in the tray")
+    parser.add_argument("--tray", action="store_true", help="start minimized with a tray icon")
     parser.add_argument(
         "--legacy-ui",
         action="store_true",
@@ -138,7 +142,8 @@ if __name__ == "__main__":
                 WebUI,
                 host=args.host,
                 port=args.port,
-                open_browser=not args.no_browser,
+                open_browser=not args.no_browser and not args.tray,
+                tray=args.tray,
             )
         client = Twitch(settings, ui_factory=ui_factory)
 
@@ -177,6 +182,9 @@ if __name__ == "__main__":
             client.print(_("error", "captcha"))
         except Exception:
             exit_status = 1
+            if sys.platform == "win32":
+                from platform_qol import show_startup_error
+                show_startup_error(str(getattr(client.gui, "fatal_error", None) or "Fatal miner error. See log.txt for details."))
             if getattr(client.gui, "fatal_error", None):
                 logger.critical("Dashboard failed:\n%s", traceback.format_exc())
                 client.gui.close()
@@ -203,6 +211,9 @@ if __name__ == "__main__":
 
     locked, lock_handle = lock_file(LOCK_PATH)
     if not locked:
+        if sys.platform == "win32":
+            from platform_qol import show_startup_error
+            show_startup_error("Twitch Drops Miner is already running for this data directory.")
         parser.error("Twitch Drops Miner is already running for this data directory.")
     try:
         raise SystemExit(asyncio.run(run()))

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -12,6 +13,20 @@ from yarl import URL
 
 
 class HeadlessImportTests(unittest.TestCase):
+    def test_stats_are_persisted(self) -> None:
+        import stats
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            stats, "STATS_PATH", Path(directory) / "stats.json"
+        ):
+            first = stats.Stats()
+            first.progress(3)
+            first.claim()
+            second = stats.Stats()
+            self.assertEqual(second.lifetime["mining_minutes"], 3)
+            self.assertEqual(second.lifetime["drops_claimed"], 1)
+            self.assertEqual(second.lifetime["started_count"], 2)
+
     def test_engine_import_does_not_load_tk_gui(self) -> None:
         sys.modules.pop("gui", None)
         sys.modules.pop("tkinter", None)
@@ -65,7 +80,10 @@ class HeadlessImportTests(unittest.TestCase):
         self.assertEqual(list(ui.notifications), [])
         twitch.settings.tray_notifications = True
         ui.tray.notify("Claimed", "Drop")
-        self.assertEqual(list(ui.notifications), [{"title": "Drop", "message": "Claimed"}])
+        notification = list(ui.notifications)[0]
+        self.assertEqual(notification["title"], "Drop")
+        self.assertEqual(notification["message"], "Claimed")
+        self.assertIn("time", notification)
 
     def test_web_activity_is_written_to_the_process_log(self) -> None:
         from webui import WebUI
@@ -89,6 +107,32 @@ class HeadlessImportTests(unittest.TestCase):
 
 
 class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_optional_dashboard_authentication(self) -> None:
+        from utils import AwaitableValue
+        from webui import WebUI
+
+        twitch = SimpleNamespace(
+            watching_channel=AwaitableValue(), inventory=[], channels={},
+            settings=SimpleNamespace(
+                priority=[], exclude=set(), priority_mode=SimpleNamespace(name="PRIORITY_ONLY"),
+                connection_quality=1, tray_notifications=True, enable_badges_emotes=False,
+                available_drops_check=False, proxy="",
+            ),
+            can_watch=Mock(),
+        )
+        with patch.dict("os.environ", {"TDM_WEB_TOKEN": "secret"}):
+            client = TestClient(TestServer(WebUI(twitch)._build_app()))
+        await client.start_server()
+        try:
+            self.assertEqual((await client.get("/healthz")).status, 200)
+            self.assertEqual((await client.get("/")).status, 401)
+            self.assertEqual(
+                (await client.get("/", headers={"Authorization": "Basic dGRtOnNlY3JldA=="})).status,
+                200,
+            )
+        finally:
+            await client.close()
+
     async def test_dashboard_routes_support_direct_navigation(self) -> None:
         from utils import AwaitableValue
         from webui import WebUI
@@ -133,6 +177,39 @@ class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('role="combobox"', script)
             self.assertIn('event.key === "ArrowDown"', script)
             self.assertNotIn("<datalist", script)
+        finally:
+            await client.close()
+
+    async def test_operational_endpoints(self) -> None:
+        from utils import AwaitableValue
+        from webui import WebUI
+
+        settings = SimpleNamespace(
+            priority=[], exclude=set(), priority_mode=SimpleNamespace(name="PRIORITY_ONLY"),
+            connection_quality=1, tray_notifications=True, enable_badges_emotes=False,
+            available_drops_check=False, autostart_tray=False, keep_awake=False, proxy="",
+        )
+        stats = Mock()
+        stats.snapshot.return_value = {
+            "startedAt": "2026-01-01T00:00:00+00:00", "uptimeSeconds": 60,
+            "session": {}, "lifetime": {"drops_claimed": 2, "mining_minutes": 10,
+            "channel_switches": 1, "watch_failures": 0, "watch_heartbeats": 10},
+            "lastInventoryAt": None, "lastRecoveryAt": None,
+        }
+        twitch = SimpleNamespace(
+            watching_channel=AwaitableValue(), inventory=[], channels={}, settings=settings,
+            stats=stats, can_watch=Mock(),
+        )
+        client = TestClient(TestServer(WebUI(twitch)._build_app()))
+        await client.start_server()
+        try:
+            self.assertEqual((await client.get("/healthz")).status, 200)
+            self.assertEqual((await client.get("/readyz")).status, 503)
+            metrics = await (await client.get("/metrics")).text()
+            self.assertIn("tdm_drops_claimed_total 2", metrics)
+            exported = await (await client.get("/api/export?stats=1")).json()
+            self.assertEqual(exported["settings"]["proxy"], "")
+            self.assertIn("stats", exported)
         finally:
             await client.close()
 

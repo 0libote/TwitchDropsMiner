@@ -19,6 +19,7 @@ from translate import _
 from channel import Channel
 from websocket import WebsocketPool
 from inventory import DropsCampaign
+from stats import Stats
 from exceptions import (
     ExitRequest,
     GQLException,
@@ -443,6 +444,7 @@ class Twitch:
         ui_factory: Callable[[Twitch], Any] | None = None,
     ):
         self.settings: Settings = settings
+        self.stats = Stats()
         # State management
         self._state: State = State.IDLE
         self._state_change = asyncio.Event()
@@ -917,6 +919,7 @@ class Twitch:
                 continue
             # logger.log(CALL, f"Sending watch payload to: {channel.name}")
             succeeded: bool = await channel.send_watch()
+            self.stats.heartbeat(succeeded)
             last_sent: float = time()
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
@@ -1046,6 +1049,9 @@ class Twitch:
         )
 
     def watch(self, channel: Channel, *, update_status: bool = True):
+        previous = self.watching_channel.get_with_default(None)
+        if previous is None or previous.id != channel.id:
+            self.stats.increment("channel_switches")
         self.gui.tray.change_icon("active")
         self.gui.channels.set_watching(channel)
         self.watching_channel.set(channel)

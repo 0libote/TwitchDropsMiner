@@ -23,6 +23,7 @@ class SettingsFile(TypedDict):
     enable_badges_emotes: bool
     available_drops_check: bool
     priority_mode: PriorityMode
+    keep_awake: bool
 
 
 default_settings: SettingsFile = {
@@ -37,6 +38,7 @@ default_settings: SettingsFile = {
     "enable_badges_emotes": False,
     "available_drops_check": False,
     "priority_mode": PriorityMode.ENDING_SOONEST,
+    "keep_awake": False,
 }
 
 
@@ -61,6 +63,7 @@ class Settings:
     enable_badges_emotes: bool
     available_drops_check: bool
     priority_mode: PriorityMode
+    keep_awake: bool
 
     PASSTHROUGH = ("_settings", "_args", "_altered")
 

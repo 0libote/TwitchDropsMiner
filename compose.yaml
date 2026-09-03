@@ -1,11 +1,15 @@
 services:
   miner:
     build: .
+    init: true
     restart: unless-stopped
+    read_only: true
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - tdm-data:/data
+    tmpfs:
+      - /tmp
 
 volumes:
   tdm-data:

@@ -165,6 +165,7 @@ class BaseDrop:
         return delim.join(benefit.name for benefit in self.benefits)
 
     async def claim(self) -> bool:
+        was_claimed = self.is_claimed
         result = await self._claim()
         if result:
             self.is_claimed = result
@@ -179,6 +180,8 @@ class BaseDrop:
                 _("status", "claimed_drop").format(drop=claim_text.replace('\n', ' '))
             )
             self._twitch.gui.tray.notify(claim_text, _("gui", "tray", "notification_title"))
+            if not was_claimed:
+                self._twitch.stats.claim()
         else:
             logger.error(f"Drop claim has potentially failed! Drop ID: {self.id}")
         return result
@@ -335,6 +338,7 @@ class TimedDrop(BaseDrop):
         elif self.real_current_minutes + delta > self.required_minutes:
             delta = self.required_minutes - self.real_current_minutes
         self.campaign._update_real_minutes(delta)
+        self._twitch.stats.progress(delta)
 
 
 class DropsCampaign:
