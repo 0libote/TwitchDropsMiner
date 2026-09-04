@@ -33,6 +33,7 @@ Use the original upstream release if you need its most established desktop exper
 - Supports priority and exclusion lists.
 - Stores Twitch authorization locally and reuses it between runs.
 - Presents campaign progress, channels, settings, and activity in one responsive interface.
+- Keeps a permanent, account-specific SQLite reward history with search and game filters.
 - Tracks upstream engine changes without silently applying volatile Twitch API updates.
 
 ## Run from source
@@ -77,12 +78,27 @@ Operational environment variables:
 TDM_LOG=1                 Enable the persistent log
 TDM_WEB_TOKEN=secret      Protect the dashboard with HTTP Basic auth (user: tdm)
 TDM_WEBHOOK_URL=https://  Send claim, network and watchdog events as JSON
+TDM_PUBLIC_URL=https://  Exact dashboard origin when using a hostname/reverse proxy
 ```
 
 Choose **Settings → Appearance** for Graphite (charcoal and brass), Paper (warm light),
 Midnight (deep blue), Evergreen (forest and sage), or your system’s light/dark theme.
 The desktop sidebar also has a quick appearance selector.
 Appearance is saved per browser and applies to Docker and desktop dashboards.
+
+Pause remains in effect through channel changes, refreshes and miner restarts. Use **Resume
+mining** to continue. The mining plan shows the engine's selected games and blocked preferences;
+completion estimates assume continuous availability and are not guarantees.
+
+**History** saves rewards returned by Twitch's normal inventory refresh and future successful
+claims to `history.sqlite3` in the data directory. Search by reward, game or campaign and filter
+by game. Rewards survive subsequent Twitch inventory changes, and accounts stay separate.
+This is the available history Twitch returns, not a guarantee of every drop ever claimed.
+See [history coverage and storage](docs/history.md) for details and backup guidance.
+
+Configure a JSON webhook under **Settings → Webhook notifications**, save, then use **Test
+notification** to verify delivery. `TDM_WEBHOOK_URL` overrides the saved URL. Webhook URLs and
+proxy credentials are omitted from settings exports.
 
 The dashboard exposes `/healthz` for liveness, `/readyz` for authenticated Twitch readiness,
 `/api/diagnostics` for redacted runtime details, and `/metrics` for basic Prometheus counters.
@@ -129,6 +145,13 @@ The Compose configuration publishes only to the host's loopback interface. If yo
 expose it beyond a trusted LAN, add authentication and HTTPS at the reverse proxy; the dashboard
 can control the miner and reveal Twitch account state.
 
+When accessing the dashboard through a named host or HTTPS reverse proxy, set
+`TDM_PUBLIC_URL=https://miner.example.com` to the exact browser origin (scheme, hostname and
+port, with no path). The proxy must preserve the Host header. Direct localhost/IP access works
+without this variable. Dashboard actions require a CSRF token and reject foreign origins;
+API clients first GET `/api/csrf` and send its `token` as `X-CSRF-Token` on writes. HTTP Basic
+authentication remains controlled by `TDM_WEB_TOKEN`; it does not provide browser session logout.
+
 Common commands:
 
 ```bash
@@ -174,7 +197,8 @@ The modern path deliberately uses the dependencies already central to the miner:
 - Plain HTML, CSS, and JavaScript with server-sent events for the UI.
 - PyInstaller for Windows and macOS artifacts.
 
-There is no Node build, frontend framework, database, or second API server to keep synchronized.
+There is no frontend build, frontend framework, or second API server. SQLite ships with Python
+and needs no database service. Node and pinned Playwright are used only for browser tests.
 
 Run the checks:
 
@@ -183,6 +207,19 @@ env/bin/python -m unittest discover -s tests -v
 env/bin/python -m compileall -q .
 env/bin/python scripts/check_upstream.py --check
 ```
+
+Browser checks (also required by CI):
+
+```bash
+npm ci
+npx playwright install chromium
+env/bin/python scripts/preview_web.py
+# In another terminal:
+npm test
+```
+
+The browser suite uses fictional fixtures and intercepts API actions; it never controls a live
+miner. Python tests exercise the real request validation and persistence against temporary data.
 
 ## Upstream maintenance
 

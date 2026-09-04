@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import asyncio
 import logging
-from time import time
+from time import monotonic, time
 from copy import deepcopy
 from itertools import chain
 from functools import partial
@@ -20,6 +20,7 @@ from channel import Channel
 from websocket import WebsocketPool
 from inventory import DropsCampaign
 from stats import Stats
+from history import History
 from exceptions import (
     ExitRequest,
     GQLException,
@@ -43,6 +44,7 @@ from utils import (
 from constants import (
     CALL,
     MAX_INT,
+    DATA_DIR,
     DUMP_PATH,
     COOKIES_PATH,
     MAX_CHANNELS,
@@ -445,7 +447,17 @@ class Twitch:
     ):
         self.settings: Settings = settings
         self.stats = Stats()
+        self.history: History | None = None
+        self.history_error: str | None = None
+        try:
+            self.history = History(DATA_DIR / "history.sqlite3")
+        except Exception as exc:
+            self.history_error = str(exc)
+            logger.warning("Reward history is unavailable: %s", exc)
         # State management
+        self.paused = False
+        self.watching_started_at: float | None = None
+        self.last_confirmed_progress_at: float | None = None
         self._state: State = State.IDLE
         self._state_change = asyncio.Event()
         self.wanted_games: list[Game] = []
@@ -512,8 +524,16 @@ class Twitch:
         )
         return self._session
 
-    async def shutdown(self) -> None:
+    async def shutdown(self, *, restart: bool = False) -> None:
         start_time = time()
+        if not restart and self.history is not None:
+            try:
+                self.history.close()
+            except Exception as exc:
+                self.history_error = str(exc)
+                logger.warning("Could not close reward history: %s", exc)
+            finally:
+                self.history = None
         self.stop_watching()
         if self._watching_task is not None:
             self._watching_task.cancel()
@@ -547,7 +567,48 @@ class Twitch:
     def wait_until_login(self) -> abc.Coroutine[Any, Any, Literal[True]]:
         return self._auth_state._logged_in.wait()
 
+    def _record_history(self, operation: str, value: Any) -> None:
+        account_id = getattr(self._auth_state, "user_id", None)
+        if self.history is None or account_id is None:
+            return
+        try:
+            getattr(self.history, operation)(str(account_id), value)
+            self.history_error = None
+        except Exception as exc:
+            # Optional local history must never interrupt mining or a successful claim.
+            self.history_error = str(exc)
+            logger.warning("Could not update reward history: %s", exc)
+
+    def record_claim_history(self, drop: Any) -> None:
+        self._record_history("record_claim", drop)
+
+    def pause(self) -> None:
+        self.paused = True
+        self.stop_watching()
+        self.change_state(State.IDLE)
+
+    def resume(self) -> None:
+        self.paused = False
+        self.change_state(State.INVENTORY_FETCH)
+
+    def seconds_without_progress(self) -> float | None:
+        if self.paused or self.watching_started_at is None:
+            return None
+        baseline = self.watching_started_at
+        if self.last_confirmed_progress_at is not None:
+            baseline = max(baseline, self.last_confirmed_progress_at)
+        return monotonic() - baseline
+
+    def _update_confirmed_minutes(self, drop: TimedDrop, minutes: int) -> None:
+        previous = drop.real_current_minutes
+        drop.update_minutes(minutes)
+        if drop.real_current_minutes > previous:
+            self.last_confirmed_progress_at = monotonic()
+
     def change_state(self, state: State) -> None:
+        # Background maintenance and websocket events must preserve the user's pause.
+        if self.paused and state not in (State.IDLE, State.RESTART, State.EXIT):
+            return
         if self._state is not State.EXIT:
             # prevent state changing once we switch to exit state
             self._state = state
@@ -616,7 +677,7 @@ class Twitch:
                 await self._run()
                 break
             except ReloadRequest:
-                await self.shutdown()
+                await self.shutdown(restart=True)
             except ExitRequest:
                 break
             except aiohttp.ContentTypeError as exc:
@@ -647,7 +708,7 @@ class Twitch:
         ])
         full_cleanup: bool = False
         channels: Final[OrderedDict[int, Channel]] = self.channels
-        self.change_state(State.INVENTORY_FETCH)
+        self.change_state(State.IDLE if self.paused else State.INVENTORY_FETCH)
         while True:
             if self._state is State.IDLE:
                 if self.settings.dump:
@@ -920,11 +981,15 @@ class Twitch:
             # logger.log(CALL, f"Sending watch payload to: {channel.name}")
             succeeded: bool = await channel.send_watch()
             self.stats.heartbeat(succeeded)
+            if self.paused or self.watching_channel.get_with_default(None) is not channel:
+                continue
             last_sent: float = time()
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
             # wait ~20 seconds for a progress update
             await asyncio.sleep(20)
+            if self.paused or self.watching_channel.get_with_default(None) is not channel:
+                continue
             if self.gui.progress.minute_almost_done():
                 # If the previous update was more than ~60s ago, and the progress tracker
                 # isn't counting down anymore, that means Twitch has temporarily
@@ -945,10 +1010,12 @@ class Twitch:
                     )
                 except GQLException:
                     drop_data = None
+                if self.paused or self.watching_channel.get_with_default(None) is not channel:
+                    continue
                 if drop_data is not None:
                     gql_drop: TimedDrop | None = self._drops.get(drop_data["dropID"])
                     if gql_drop is not None and gql_drop.can_earn(channel):
-                        gql_drop.update_minutes(drop_data["currentMinutesWatched"])
+                        self._update_confirmed_minutes(gql_drop, drop_data["currentMinutesWatched"])
                         drop_text: str = (
                             f"{gql_drop.name} ({gql_drop.campaign.game}, "
                             f"{gql_drop.current_minutes}/{gql_drop.required_minutes})"
@@ -1033,7 +1100,7 @@ class Twitch:
         """
         Determines if the given channel qualifies as a switch candidate.
         """
-        if not self.can_watch(channel):
+        if self.paused or not self.can_watch(channel):
             return False
         watching_channel = self.watching_channel.get_with_default(None)
         if watching_channel is None or not self.can_watch(watching_channel):
@@ -1049,6 +1116,10 @@ class Twitch:
         )
 
     def watch(self, channel: Channel, *, update_status: bool = True):
+        if self.paused:
+            return
+        if self.watching_started_at is None:
+            self.watching_started_at = monotonic()
         previous = self.watching_channel.get_with_default(None)
         if previous is None or previous.id != channel.id:
             self.stats.increment("channel_switches")
@@ -1061,6 +1132,7 @@ class Twitch:
             self.gui.status.update(status_text)
 
     def stop_watching(self):
+        self.watching_started_at = None
         self.gui.clear_drop()
         self.watching_channel.clear()
         self.gui.channels.clear_watching()
@@ -1235,7 +1307,7 @@ class Twitch:
         logger.log(CALL, f"Drop update from websocket: {drop_text}")
         if drop is not None and drop.can_earn(self.watching_channel.get_with_default(None)):
             # the received payload is for the drop we expected
-            drop.update_minutes(message["data"]["current_progress_min"])
+            self._update_confirmed_minutes(drop, message["data"]["current_progress_min"])
 
     @task_wrapper
     async def process_notifications(self, user_id: int, message: JsonType):
@@ -1442,6 +1514,7 @@ class Twitch:
         # fetch in-progress campaigns (inventory)
         response = await self.gql_request(GQL_QUERIES["Inventory"])
         inventory: JsonType = response["data"]["currentUser"]["inventory"]
+        self._record_history("ingest_inventory", inventory.get("gameEventDrops"))
         ongoing_campaigns: list[JsonType] = inventory["dropCampaignsInProgress"] or []
         # this contains claimed benefit edge IDs, not drop IDs
         claimed_benefits: dict[str, datetime] = {
@@ -1507,6 +1580,7 @@ class Twitch:
             DropsCampaign(self, campaign_data, claimed_benefits)
             for campaign_data in inventory_data.values()
         ]
+        self._record_history("record_campaigns", campaigns)
         campaigns.sort(key=lambda c: c.active, reverse=True)
         campaigns.sort(key=lambda c: c.upcoming and c.starts_at or c.ends_at)
         campaigns.sort(key=lambda c: c.eligible, reverse=True)

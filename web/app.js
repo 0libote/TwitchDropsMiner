@@ -18,6 +18,7 @@ const routeMeta = {
   campaign: ["Campaign", "Campaign details"],
   mining: ["Choose what to watch next", "Mining plan"],
   settings: ["Make this miner your own", "Settings"],
+  history: ["Saved rewards across your Twitch campaigns", "Reward history"],
   diagnostics: ["Connection health and miner events", "Diagnostics"],
 };
 
@@ -35,13 +36,19 @@ const renderedContent = new WeakMap();
 function setContent(selector, html) {
   const element = $(selector);
   if (!element || renderedContent.get(element) === html) return;
+  const focused = document.activeElement !== element && element.contains(document.activeElement) ? document.activeElement : null;
+  if (focused?.matches("input, textarea, select, [contenteditable], button:disabled")) return;
+  const controls = focused ? $$("a, button, input, select, textarea, [tabindex]", element) : [];
+  const index = controls.indexOf(focused);
+  const identity = node => JSON.stringify([node.tagName, node.id, node.getAttribute("href"), {...node.dataset}]);
+  const key = focused ? identity(focused) : null;
   renderedContent.set(element, html);
-  const focused = element.contains(document.activeElement) ? document.activeElement : null;
-  const href = focused?.getAttribute("href");
-  const action = focused?.dataset.action;
   element.innerHTML = html;
-  if (href) $$('a', element).find(link => link.getAttribute("href") === href)?.focus({preventScroll: true});
-  else if (action) $('[data-action]', element)?.focus({preventScroll: true});
+  if (focused) {
+    const replacements = $$("a, button, input, select, textarea, [tabindex]", element);
+    const replacement = replacements.find(node => identity(node) === key) || replacements[index] || element;
+    replacement.focus({preventScroll: true});
+  }
 }
 function artwork(src, className = "", alt = "") {
   return `<span class="artwork ${className}">${icon("gift")}${src ? `<img src="${esc(src)}" alt="${esc(alt)}" loading="lazy">` : ""}</span>`;
@@ -50,7 +57,7 @@ function artwork(src, className = "", alt = "") {
 function routeFromPath(path = location.pathname) {
   const detail = path.match(/^\/campaigns\/([^/]+)$/);
   if (detail) return {name: "campaign", id: decodeURIComponent(detail[1])};
-  return {name: ({"/":"dashboard", "/campaigns":"campaigns", "/mining":"mining", "/settings":"settings", "/diagnostics":"diagnostics"})[path] || "dashboard"};
+  return {name: ({"/":"dashboard", "/campaigns":"campaigns", "/mining":"mining", "/settings":"settings", "/diagnostics":"diagnostics", "/history":"history"})[path] || "dashboard"};
 }
 
 function formatMinutes(minutes) {
@@ -91,8 +98,17 @@ function toast(message, error = false) {
   toastTimer = setTimeout(() => node.classList.remove("show"), 2600);
 }
 
+let csrfTokenPromise;
 async function request(url, options = {}) {
-  const response = await fetch(url, {headers: {"Content-Type": "application/json"}, ...options});
+  const headers = {"Content-Type": "application/json", ...options.headers};
+  if (!["GET", "HEAD"].includes((options.method || "GET").toUpperCase())) {
+    csrfTokenPromise ||= fetch("/api/csrf").then(response => {
+      if (!response.ok) throw new Error("Could not secure this request. Refresh and try again.");
+      return response.json();
+    }).then(data => data.token).catch(error => { csrfTokenPromise = null; throw error; });
+    headers["X-CSRF-Token"] = await csrfTokenPromise;
+  }
+  const response = await fetch(url, {...options, headers});
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
@@ -109,6 +125,7 @@ function cloneSettings(values) {
     autostart: values.autostart,
     keepAwake: values.keepAwake,
     proxy: values.proxy,
+    webhookUrl: values.webhookUrl || "",
   };
 }
 
@@ -194,7 +211,7 @@ function updateChrome() {
 
   const kind = statusKind();
   $("#connection-dot").className = `status-dot ${kind}`;
-  $("#connection-label").textContent = connected ? (state.activity === "idle" ? "Miner paused" : "Miner connected") : "Reconnecting";
+  $("#connection-label").textContent = connected ? (state.paused === true ? "Miner paused" : "Miner connected") : "Reconnecting";
   $("#connection-detail").textContent = connected ? state.status || "Waiting for updates" : "Showing last received state";
   $("#sidebar-version").textContent = state.system?.version ? `Next · ${state.system.version}` : "Twitch Drops Miner Next";
   $("#campaign-count").textContent = state.campaigns.filter(item => item.status === "active" && item.eligible && !item.finished).length;
@@ -203,12 +220,12 @@ function updateChrome() {
   const issues = state.networkIssues || [];
   const alert = $("#network-alert");
   alert.classList.toggle("hidden", !issues.length);
-  alert.innerHTML = issues.length ? `<div><strong>Twitch service blocked or unreachable</strong><p>Requests to ${esc(issues.join(", "))} are failing. Drop progress may stop.</p></div><a href="https://github.com/0libote/TwitchDropsMiner#dns-blockers-and-firewalls" target="_blank" rel="noreferrer">Troubleshoot</a>` : "";
+  setContent("#network-alert", issues.length ? `<div><strong>Twitch service blocked or unreachable</strong><p>Requests to ${esc(issues.join(", "))} are failing. Drop progress may stop.</p></div><a href="https://github.com/0libote/TwitchDropsMiner#dns-blockers-and-firewalls" target="_blank" rel="noreferrer">Troubleshoot</a>` : "");
 
   const controls = [];
   if (route.name === "dashboard") {
-    const idle = state.activity === "idle";
-    controls.push(`<button class="button secondary" data-action="${idle ? "reload" : "pause"}" ${state.canLogout ? "" : "disabled"}>${icon(idle ? "play" : "pause")}${idle ? "Resume mining" : "Pause mining"}</button>`);
+    const idle = state.paused === true;
+    controls.push(`<button class="button secondary" data-action="${idle ? "resume" : "pause"}" ${state.canLogout ? "" : "disabled"}>${icon(idle ? "play" : "pause")}${idle ? "Resume mining" : "Pause mining"}</button>`);
     controls.push(`<button class="button secondary" data-action="reload" ${state.canLogout ? "" : "disabled"}>${icon("refresh")}Refresh</button>`);
   } else if (route.name === "campaigns") {
     controls.push(`<button class="button secondary" data-action="reload" ${state.canLogout ? "" : "disabled"}>Refresh inventory</button>`);
@@ -231,7 +248,7 @@ function dashboardTemplate() {
     </div>
     <div class="dashboard-lower">
       <section aria-labelledby="queue-heading">
-        <div class="section-title"><div><h2 id="queue-heading">Your mining queue</h2><p>Priority games, in the order you chose.</p></div><a class="text-link" href="/mining" data-route>Edit queue ${icon("arrow")}</a></div>
+        <div class="section-title"><div><h2 id="queue-heading">Your mining plan</h2><p>Game selection order and availability.</p></div><a class="text-link" href="/mining" data-route>Edit queue ${icon("arrow")}</a></div>
         <div class="queue-preview" id="queue-preview"></div>
         <div class="queue-footnote" id="queue-rule"></div>
       </section>
@@ -246,7 +263,7 @@ function updateDashboard() {
   const drop = state.activeDrop;
   const campaign = activeCampaign();
   const channel = activeChannel();
-  const paused = state.activity === "idle";
+  const paused = state.paused === true;
   const mining = connected && !paused && ["active", "pickaxe"].includes(state.activity);
   const heading = paused ? "Mining is paused" : drop?.rewards || "Ready for the next drop";
   const explanation = paused ? "Your progress is saved. Resume whenever you’re ready." : drop ? drop.name : "Waiting for an eligible campaign and a live channel. The miner will keep checking.";
@@ -258,7 +275,7 @@ function updateDashboard() {
       <div class="reward-copy">
         ${campaign ? `<p class="reward-game">${esc(campaign.game)}</p>` : ""}
         <h2 id="now-heading">${esc(heading)}</h2>
-        <p class="now-meta">${esc(explanation)}</p>
+        <p class="now-meta">${esc(explanation)}</p><p class="progress-health">${state.progressHealth?.lastConfirmedAt ? `Last confirmed progress ${esc(formatDate(state.progressHealth.lastConfirmedAt, true))}. ` : "No confirmed progress yet. "}${esc(state.progressHealth?.recoveryReason || "")}${state.progressHealth?.nextRecoveryInSeconds != null ? ` Next recovery check in ${Math.ceil(state.progressHealth.nextRecoveryInSeconds / 60)} min.` : ""}</p>
         ${drop ? `<div class="reward-progress-label"><strong>${progress}<span>%</span></strong><span>${esc(formatMinutes(drop.remainingMinutes))}</span></div>
         <div class="progress" role="progressbar" aria-label="Current drop progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
         <div class="progress-meta"><span>${esc(drop.currentMinutes)} of ${esc(drop.requiredMinutes)} minutes watched</span><span>${!connected || paused ? "Progress saved" : "Claims automatically"}</span></div>` : `<a class="button secondary" href="/campaigns" data-route>Browse campaigns ${icon("arrow")}</a>`}
@@ -270,22 +287,17 @@ function updateDashboard() {
   setContent("#session-facts", `<div class="stream-summary"><span class="stream-avatar" aria-hidden="true">${esc(channel?.name?.slice(0, 2).toUpperCase() || "—")}</span><div><span class="muted">${mining && channel ? "Watching on Twitch" : "Selected channel"}</span><strong>${channel ? `<a class="channel-link" href="${esc(channel.url)}" target="_blank" rel="noreferrer">${esc(channel.name)} <span aria-hidden="true">↗</span></a>` : "Finding a channel"}</strong></div></div><p class="stream-title">${channel ? esc(channel.title || channel.game || "") : "Eligible live streams appear automatically."}</p>`);
   const stats = state.stats || {};
   setContent("#stat-cards", `
-    <div><dt>Drops claimed</dt><dd class="claimed-total">${stats.session?.drops_claimed || 0}<small>${stats.lifetime?.drops_claimed || 0} lifetime</small></dd></div>
+    <div><dt>Drops claimed</dt><dd class="claimed-total">${stats.session?.drops_claimed || 0}<small>${stats.lifetime?.drops_claimed || 0} this installation</small></dd></div>
     <div><dt>Time mining</dt><dd>${esc(formatDuration((stats.session?.mining_minutes || 0) * 60))}</dd></div>
     <div><dt>Session uptime</dt><dd>${esc(formatDuration(stats.uptimeSeconds || 0))}</dd></div>
     <div class="session-selection"><dt>Selection rule</dt><dd>${esc(({PRIORITY_ONLY:"Priority games only",ENDING_SOONEST:"Ending soonest",LOW_AVBL_FIRST:"Lowest availability"})[state.settings.priorityMode] || "Automatic")}</dd></div>`);
 
-  const priority = state.settings.priority;
-  setContent("#queue-preview", priority.length ? priority.slice(0, 5).map((game, index) => {
-    const campaigns = state.campaigns.filter(item => item.game === game);
-    const eligible = campaigns.find(item => item.status === "active" && item.eligible && !item.finished);
-    const item = eligible || campaigns[0];
-    const isMining = mining && campaign?.game === game;
-    const hasChannel = state.channels.some(channel => channel.game === game && channel.watchable);
-    const availability = eligible ? `${eligible.totalDrops - eligible.claimedDrops} drops left · ${hasChannel ? `Ends ${formatDate(eligible.endsAt, true)}` : "Waiting for a live channel"}` : campaigns.some(item => !item.linked) ? "Account connection required" : "No available campaigns";
-    return `<div class="queue-row"><span class="queue-number">${String(index + 1).padStart(2, "0")}</span>${artwork(item?.image, "queue-art")}<span class="queue-game">${item ? `<a href="/campaigns/${encodeURIComponent(item.id)}" data-route>${esc(game)}</a>` : `<strong>${esc(game)}</strong>`}<small>${esc(availability)}</small></span>${isMining ? '<span class="queue-state"><span class="status-dot live"></span>Mining</span>' : `<span class="queue-state muted">${eligible && hasChannel ? "Queued" : "Waiting"}</span>`}</div>`;
-  }).join("") : `<div class="empty-state"><div>${icon("gift")}<strong>Let’s build your queue</strong><p>Add the games you want drops for, or let the miner choose automatically.</p><a class="button secondary" href="/mining" data-route>Add priority games</a></div></div>`);
-  setContent("#queue-rule", `<span>${priority.length > 5 ? `${priority.length - 5} more games in your mining plan. ` : ""}${state.settings.priorityMode === "PRIORITY_ONLY" ? "Only games in your priority list will be mined." : "When these games are unavailable, your fallback rule takes over."}</span>`);
+  const plan = state.miningPlan || state.settings.priority.map(game => ({game, reason: "Priority preference; selection details unavailable", priority: true}));
+  setContent("#queue-preview", plan.length ? plan.slice(0, 5).map((item, index) => {
+    const isMining = mining && item.watching;
+    return `<div class="queue-row"><span class="queue-number">${String(index + 1).padStart(2, "0")}</span>${artwork(item.image, "queue-art")}<span class="queue-game">${item.campaignId ? `<a href="/campaigns/${encodeURIComponent(item.campaignId)}" data-route>${esc(item.game)}</a>` : `<strong>${esc(item.game)}</strong>`}<small>${esc(item.reason)}${item.estimatedCompletionAt ? ` · Earliest completion ${esc(formatDate(item.estimatedCompletionAt))}` : ""}</small></span><span class="queue-state ${isMining ? "" : "muted"}">${isMining ? '<span class="status-dot live"></span>Mining' : item.priority ? "Priority" : "Automatic"}</span></div>`;
+  }).join("") : `<div class="empty-state"><div>${icon("gift")}<strong>No games selected for mining</strong><p>Check campaign availability, account links and your mining preferences.</p><a class="button secondary" href="/mining" data-route>Open mining plan</a></div></div>`);
+  setContent("#queue-rule", `<span>${plan.length > 5 ? `${plan.length - 5} more games in your plan. ` : ""} ${state.settings.priorityMode === "PRIORITY_ONLY" ? "Only priority games will be mined." : "Automatic games follow the selection rule when priorities are unavailable."} Estimates assume uninterrupted eligible viewing; outages, pauses and prerequisites can delay completion.</span>`);
 
   const events = [...(state.notifications || []).map(item => ({title: item.title, text: item.message, time: item.time, notification: true})), ...(state.messages || []).slice(-8).reverse().map(item => ({title: "Miner", text: item.message || item, time: item.time}))].sort((a, b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0)).slice(0, 4);
   setContent("#activity-preview", events.length ? events.map(item => `<div class="activity-row"><span class="activity-mark ${item.notification ? "notification" : ""}" aria-hidden="true">${icon(item.notification ? "gift" : "check")}</span><div><div class="activity-heading"><strong>${esc(item.title)}</strong>${item.time ? `<time datetime="${esc(item.time)}" title="${esc(formatDate(item.time))}">${esc(new Intl.DateTimeFormat(undefined, {hour: "2-digit", minute: "2-digit"}).format(new Date(item.time)))}</time>` : ""}</div><p>${esc(item.text)}</p></div></div>`).join("") : `<div class="empty-state"><div><strong>No activity yet</strong><p>Progress updates and claimed drops will appear here.</p></div></div>`);
@@ -330,7 +342,7 @@ function filteredCampaigns() {
 function updateCampaignList() {
   const campaigns = filteredCampaigns();
   $("#collection-summary").textContent = `${campaigns.length} campaign${campaigns.length === 1 ? "" : "s"} · Ordered by end date, active first`;
-  $("#campaign-list").innerHTML = campaigns.length ? campaigns.map(campaign => {
+  setContent("#campaign-list", campaigns.length ? campaigns.map(campaign => {
     const [label, kind] = campaignBadge(campaign);
     const prioritized = state.settings.priority.includes(campaign.game);
     return `<article class="campaign-row">
@@ -340,7 +352,7 @@ function updateCampaignList() {
       <div class="campaign-time">${campaign.status === "upcoming" ? "Starts" : "Ends"} ${esc(formatDate(campaign.status === "upcoming" ? campaign.startsAt : campaign.endsAt, true))}<small>${esc(formatDate(campaign.status === "upcoming" ? campaign.startsAt : campaign.endsAt))}</small></div>
       <div><span class="status-badge ${kind}">${esc(label)}</span>${prioritized ? '<div class="muted" style="margin-top:5px;font-size:11px">Prioritized</div>' : ""}${feasibility(campaign)}</div>
     </article>`;
-  }).join("") : `<div class="empty-state"><div><strong>No matching campaigns</strong><p>Try another search or filter.</p></div></div>`;
+  }).join("") : `<div class="empty-state"><div><strong>No matching campaigns</strong><p>Try another search or filter.</p></div></div>`);
 }
 
 function campaignDetailTemplate(campaign) {
@@ -356,11 +368,11 @@ function campaignDetailTemplate(campaign) {
         <div class="drop-list">${campaign.drops.map(drop => {
           const benefit = drop.benefits?.[0];
           const dropLabel = drop.claimed ? ["Claimed", "good"] : drop.claimable ? ["Ready to claim", "warn"] : [`${Math.round(drop.progress * 100)}%`, ""];
-          return `<article class="drop-row">${benefit?.image ? `<span class="artwork drop-art"><img src="${esc(benefit.image)}" alt="">${icon("gift")}</span>` : '<div class="reward-fallback" style="width:42px;height:42px;font-size:16px" aria-hidden="true">◆</div>'}<div><strong>${esc(drop.rewards || drop.name)}</strong><small>${esc(drop.name)} · ${drop.currentMinutes}/${drop.requiredMinutes} minutes</small></div><span class="status-badge ${dropLabel[1]}">${dropLabel[0]}</span></article>`;
+          return `<article class="drop-row">${benefit?.image ? `<span class="artwork drop-art"><img src="${esc(benefit.image)}" alt="">${icon("gift")}</span>` : '<div class="reward-fallback" style="width:42px;height:42px;font-size:16px" aria-hidden="true">◆</div>'}<div><strong>${esc(drop.rewards || drop.name)}</strong><small>${esc(drop.name)} · ${drop.currentMinutes}/${drop.requiredMinutes} minutes</small>${drop.prerequisites?.length ? `<small>Requires: ${drop.prerequisites.map(item => `${esc(item.name)} (${item.claimed ? "claimed" : "not claimed"})`).join(", ")}</small>` : ""}</div><span class="status-badge ${dropLabel[1]}">${dropLabel[0]}</span></article>`;
         }).join("") || '<div class="empty-state">No drops in this campaign.</div>'}</div>
       </div></section>
       <aside>
-        <section class="panel side-note"><h3>Availability</h3><p>Starts ${esc(formatDate(campaign.startsAt))}</p><p>Ends ${esc(formatDate(campaign.endsAt))}</p></section>
+        <section class="panel side-note"><h3>Availability</h3><p>Starts ${esc(formatDate(campaign.startsAt))}</p><p>Ends ${esc(formatDate(campaign.endsAt))}</p><p>${esc(formatMinutes(campaign.remainingMinutes))} of eligible viewing. This excludes waiting for live channels and earlier games in your plan.</p></section>
         ${!campaign.linked && campaign.linkUrl ? `<section class="panel side-note" style="margin-top:14px"><h3>Account connection required</h3><p>Connect the game account associated with this campaign before its rewards can be earned.</p><a class="button primary small" href="${esc(campaign.linkUrl)}" target="_blank" rel="noreferrer" style="display:inline-block;margin-top:13px">Open connection page</a></section>` : ""}
         <section class="panel side-note" style="margin-top:14px"><h3>Mining preference</h3><p>The miner chooses games, so this preference applies to every eligible campaign for ${esc(campaign.game)}.</p><div class="button-row" style="margin-top:14px"><button class="button primary small" data-preference="priority" data-game="${esc(campaign.game)}" ${isPriority ? "disabled" : ""}>${isPriority ? "Prioritized" : "Mine this game first"}</button><button class="button secondary small" data-preference="exclude" data-game="${esc(campaign.game)}" ${isExcluded ? "disabled" : ""}>${isExcluded ? "Excluded" : "Exclude game"}</button></div></section>
       </aside>
@@ -425,12 +437,12 @@ function updateChannels() {
   if (!container) return;
   const channels = [...state.channels].sort((a, b) => Number(b.watching) - Number(a.watching) || Number(b.watchable) - Number(a.watchable) || (b.viewers || 0) - (a.viewers || 0));
   $("#channel-count").textContent = `${channels.filter(channel => channel.online).length} live · ${channels.filter(channel => channel.watchable).length} eligible`;
-  container.innerHTML = channels.length ? channels.map(channel => `<article class="channel-row">
+  setContent("#channel-list", channels.length ? channels.map(channel => `<article class="channel-row">
     <div><strong>${esc(channel.name)}</strong><small>${esc(channel.title || (channel.online ? "Live" : "Offline"))}</small></div>
     <div class="channel-game"><strong>${esc(channel.game || "No game")}</strong><small>${channel.dropsEnabled ? "Drops enabled" : "Drops unavailable"}</small></div>
     <div class="channel-viewers"><strong>${channel.viewers == null ? "—" : Number(channel.viewers).toLocaleString()}</strong><small>viewers</small></div>
     <button class="button ${channel.watching ? "primary" : "secondary"} small" type="button" data-channel="${channel.id}" ${!channel.watchable || channel.watching ? "disabled" : ""}>${channel.watching ? "Watching" : channel.watchable ? "Switch" : "Unavailable"}</button>
-  </article>`).join("") : `<div class="empty-state"><div><strong>No eligible live channels</strong><p>The miner will keep checking automatically.</p></div></div>`;
+  </article>`).join("") : `<div class="empty-state"><div><strong>No eligible live channels</strong><p>The miner will keep checking automatically.</p></div></div>`);
 }
 
 function settingsTemplate() {
@@ -451,6 +463,7 @@ function settingsTemplate() {
           <div class="panel-header"><div><h2>Notifications</h2><p class="muted">Choose what appears in the activity feed</p></div></div>
           <div class="setting-row toggle-row"><div><strong>Claim notifications</strong><p>Record a notification whenever a drop is claimed.</p></div><label class="switch"><input type="checkbox" data-setting="trayNotifications" ${settingsDraft.trayNotifications ? "checked" : ""} aria-label="Show claim notifications"><span></span></label></div>
         </section>
+        <section class="panel setting-section"><div class="panel-header"><div><h2>Webhook notifications</h2><p class="muted">Send claim notifications to your configured service</p></div></div><div class="setting-row"><div><label for="webhook-url"><strong>Webhook URL</strong></label><p>${state.system.webhookManagedByEnvironment ? "Managed by the launch environment." : "Save the URL before sending a test notification."}</p></div><input id="webhook-url" type="url" autocomplete="off" spellcheck="false" data-setting="webhookUrl" value="${esc(settingsDraft.webhookUrl)}" ${state.system.webhookManagedByEnvironment ? "disabled" : ""}></div><div class="panel-body"><button class="button secondary small" data-action="test-webhook" ${settingsDirty || (!settingsDraft.webhookUrl && !state.system.webhookManagedByEnvironment) ? "disabled" : ""}>Test notification</button></div></section>
         ${state.system.platform.startsWith("Windows") ? `<section class="panel setting-section">
           <div class="panel-header"><div><h2>Windows</h2><p class="muted">Desktop convenience and reliability</p></div></div>
           <div class="setting-row toggle-row"><div><strong>Start with Windows</strong><p>Launch minimized to the system tray after sign-in.</p></div><label class="switch"><input type="checkbox" data-setting="autostart" ${settingsDraft.autostart ? "checked" : ""}><span></span></label></div>
@@ -490,6 +503,33 @@ function diagnosticsTemplate() {
     <section class="panel side-note" style="margin-top:14px"><h3>Network health</h3><p>${state.networkIssues?.length ? `Requests are failing for ${esc(state.networkIssues.join(", "))}.` : "No repeated Twitch network failures have been detected."}</p><p class="muted">${esc(state.system.platform)} · Python ${esc(state.system.python)} · ${state.system.authenticationEnabled ? "Dashboard authentication enabled" : "Dashboard authentication disabled"}</p><div class="button-row" style="margin-top:12px"><a class="button secondary small" href="/api/export?stats=1" download>Export settings & stats</a>${state.system.platform.startsWith("Windows") ? '<button class="button secondary small" data-action="open-data">Open data folder</button><button class="button secondary small" data-action="open-log">Open log</button>' : ""}</div><label class="button quiet small" style="display:inline-block;margin-top:10px">Import settings<input type="file" accept="application/json" data-import-settings hidden></label></section>`;
 }
 
+let historyOffset = 0;
+let historyGame = "";
+let historyQuery = "";
+let historyRequest = 0;
+function historyTemplate() {
+  return `<form id="history-filters" class="history-filters"><label>Search rewards<input type="search" id="history-query" value="${esc(historyQuery)}" placeholder="Reward or campaign name"></label><label>Game<select id="history-game"><option value="">All games</option><option value="unknown">Unknown game</option></select></label><button class="button secondary" type="submit">Search</button></form><div id="history-summary"></div><div id="history-results" aria-live="polite"></div>`;
+}
+async function loadHistory() {
+  const requestId = ++historyRequest;
+  const results = $("#history-results");
+  if (!results) return;
+  results.innerHTML = '<p role="status">Loading saved rewards…</p>';
+  try {
+    const data = await request(`/api/history?${new URLSearchParams({game: historyGame, q: historyQuery, offset: String(historyOffset)})}`);
+    if (requestId !== historyRequest || !results.isConnected) return;
+    const summary = data.summary || {};
+    const select = $("#history-game");
+    select.innerHTML = `<option value="">All games</option><option value="unknown">Unknown game</option>${(summary.games || []).filter(game => game.id && game.id !== "unknown").map(game => `<option value="${esc(game.id)}">${esc(game.name)} (${game.rewardCount})</option>`).join("")}`;
+    select.value = historyGame;
+    $("#history-summary").innerHTML = `<p class="collection-summary">${summary.rewardCount || 0} saved reward${summary.rewardCount === 1 ? "" : "s"} · ${summary.gameCount || 0} game${summary.gameCount === 1 ? "" : "s"} · ${summary.localClaimCount || 0} claims recorded by this miner${summary.dailyClaims ? ` · ${summary.dailyClaims.reduce((sum, day) => sum + (Number(day.count) || 0), 0)} in the last 30 days (UTC)` : ""}</p><p class="history-coverage">${esc(summary.coverage || "Includes rewards observed by this miner and returned by Twitch. Twitch may not provide every historical reward or its claim date.")}${summary.lastSyncedAt ? ` Last synced ${esc(formatDate(summary.lastSyncedAt))}.` : " No history sync yet."}</p>`;
+    results.innerHTML = (data.items || []).length ? `<div class="panel history-list">${data.items.map(item => `<article class="history-row">${artwork(item.imageUrl, "history-art")}<div><strong>${esc(item.name)}</strong><small><button type="button" class="history-game-link" data-history-game="${esc(item.gameId || "unknown")}">${esc(item.gameName || "Unknown game")}</button>${item.campaignName ? ` · ${esc(item.campaignName)}` : ""}</small></div><div class="history-date"><span>${item.lastAwardedAt ? esc(formatDate(item.lastAwardedAt)) : ["local", "both"].includes(item.source) && item.observedAt ? `Recorded ${esc(formatDate(item.observedAt))}` : "Claim date unavailable"}</span><small>${item.awardCount > 1 ? `${item.awardCount} awards recorded · ` : ""}${item.source === "local" ? "Recorded by this miner" : item.source === "both" ? "Recorded locally and in Twitch inventory" : "Observed in Twitch inventory"}</small></div></article>`).join("")}</div><div class="history-pagination"><button class="button secondary small" data-history-page="previous" ${historyOffset ? "" : "disabled"}>Previous</button><span>${historyOffset + 1}–${historyOffset + data.items.length} of ${data.total}</span><button class="button secondary small" data-history-page="next" ${historyOffset + data.items.length < data.total ? "" : "disabled"}>Next</button></div>` : '<div class="empty-state"><div><strong>No saved rewards found</strong><p>Try a different search or game. Rewards are saved when Twitch inventory is refreshed and when the miner claims them.</p></div></div>';
+  } catch (error) {
+    if (requestId !== historyRequest || !results.isConnected) return;
+    results.innerHTML = `<div class="empty-state"><div><strong>Could not load reward history</strong><p>${esc(error.message)}</p><button class="button secondary" data-history-retry>Try again</button></div></div>`;
+  }
+}
+
 function renderRoute(force = false) {
   if (!state || $("#app-shell").classList.contains("hidden")) return;
   const route = routeFromPath();
@@ -497,6 +537,7 @@ function renderRoute(force = false) {
   activeRoute = route;
   updateChrome();
   if (changed || force) {
+    if (route.name === "history") { $("#view").innerHTML = historyTemplate(); loadHistory(); }
     if (route.name === "dashboard") $("#view").innerHTML = dashboardTemplate();
     if (route.name === "campaigns") $("#view").innerHTML = campaignListTemplate();
     if (route.name === "campaign") $("#view").innerHTML = campaignDetailTemplate(state.campaigns.find(item => item.id === route.id));
@@ -506,7 +547,7 @@ function renderRoute(force = false) {
   }
   if (route.name === "dashboard") updateDashboard();
   if (route.name === "campaigns") updateCampaignList();
-  if (route.name === "campaign" && !changed && !settingsDirty) $("#view").innerHTML = campaignDetailTemplate(state.campaigns.find(item => item.id === route.id));
+  if (route.name === "campaign" && !changed && !settingsDirty) setContent("#view", campaignDetailTemplate(state.campaigns.find(item => item.id === route.id)));
   if (route.name === "mining" && !changed && !settingsDirty && !document.activeElement.closest("#view")) $("#view").innerHTML = miningTemplate();
   if (route.name === "mining") updateChannels();
   if (route.name === "settings" && !changed && !settingsDirty && !document.activeElement.closest("#view")) $("#view").innerHTML = settingsTemplate();
@@ -527,6 +568,8 @@ function navigate(path, {replace = false, focus = true} = {}) {
 
 function markSettingsDirty() {
   settingsDirty = true;
+  const webhookTest = $('[data-action="test-webhook"]');
+  if (webhookTest) webhookTest.disabled = true;
   $("#save-bar")?.classList.remove("hidden");
 }
 
@@ -599,7 +642,21 @@ function validProxy(value) {
   }
 }
 
+document.addEventListener("submit", event => {
+  if (event.target.id !== "history-filters") return;
+  event.preventDefault();
+  historyQuery = $("#history-query").value.trim();
+  historyGame = $("#history-game").value;
+  historyOffset = 0;
+  loadHistory();
+});
+
 document.addEventListener("click", async event => {
+  if (event.target.closest("[data-history-retry]")) { loadHistory(); return; }
+  const gameButton = event.target.closest("[data-history-game]");
+  if (gameButton) { historyGame = gameButton.dataset.historyGame; historyOffset = 0; loadHistory(); return; }
+  const pageButton = event.target.closest("[data-history-page]");
+  if (pageButton) { historyOffset = Math.max(0, historyOffset + (pageButton.dataset.historyPage === "next" ? 50 : -50)); loadHistory(); return; }
   const themeButton = event.target.closest("[data-theme-choice]");
   if (themeButton) {
     chooseTheme(themeButton.dataset.themeChoice);
@@ -803,7 +860,20 @@ document.addEventListener("error", event => {
 
 const events = new EventSource("/api/events");
 events.onmessage = event => {
-  state = JSON.parse(event.data);
+  const nextState = JSON.parse(event.data);
+  const accountChanged = String(state?.login?.userId || "") !== String(nextState.login?.userId || "")
+    || Boolean(state?.canLogout) !== Boolean(nextState.canLogout);
+  if (accountChanged) {
+    historyRequest++; // Ignore any response belonging to the previous account.
+    historyOffset = 0;
+    historyGame = "";
+    historyQuery = "";
+    if (activeRoute?.name === "history") {
+      $("#view").replaceChildren();
+      activeRoute = null;
+    }
+  }
+  state = nextState;
   connected = true;
   syncSettingsDraft();
   showApplication();

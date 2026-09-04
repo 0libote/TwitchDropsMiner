@@ -6,14 +6,14 @@ and real failure data.
 
 | # | Area | Basic feature now | Improvement path |
 |---|---|---|---|
-| 1 | Statistics | Persistent and session claim, mining-minute, switch, heartbeat and failure counters | Per-game/day history, retention controls and charts |
-| 2 | Estimates | Active-drop completion time and campaign feasibility warning | Queue-aware estimates across dependent drops |
+| 1 | Statistics | Persistent/session counters plus account-specific SQLite reward history, game filters and 30-day local claim observations | Per-game mining-time history, retention controls and charts |
+| 2 | Estimates | Engine-selected mining plan, qualified completion estimates and prerequisites | Improve estimates for overlapping campaigns and changing channel availability |
 | 3 | Health | Liveness, readiness and redacted diagnostics endpoints | Reason codes and configurable readiness policy |
 | 4 | Activity | Timestamped bounded activity and downloadable diagnostics | Severity filters and optional persistent event history |
-| 5 | Notifications | Generic JSON webhook for claims, failures, recovery and stalls | Templates, test button and service presets |
-| 6 | Authentication | Optional `TDM_WEB_TOKEN` HTTP Basic protection | Secure browser session, logout and reverse-proxy identity support |
+| 5 | Notifications | Configurable JSON webhook with a dashboard test action | Templates and service presets |
+| 6 | Authentication | Optional Basic protection, CSRF tokens, host/origin checks | Secure browser session, logout and reverse-proxy identity support |
 | 7 | Docker | Read-only filesystem, init process, healthcheck and environment configuration | Docker secrets examples and published Compose profiles |
-| 8 | Watchdog | One rate-limited inventory refresh after 15 minutes without progress | Channel rotation and escalating recovery with reason history |
+| 8 | Watchdog | Rate-limited inventory refresh after 15 minutes without confirmed progress | Channel rotation and escalating recovery with reason history |
 | 9 | Portability | Cookie-free settings/statistics export and settings import | Validated schema versions and an explicit encrypted full backup |
 | 10 | Versioning | App, engine, Python, platform and packaging details in diagnostics | Rate-limited update checks with release notes |
 | 11 | Metrics | Dependency-free Prometheus counters at `/metrics` | Authentication policy, labels and Grafana example dashboard |
@@ -26,8 +26,8 @@ and real failure data.
 
 ## Next milestone
 
-1. Harden authentication into a form-based session and add CSRF protection.
-2. Add queue-aware estimates and per-game daily statistics.
+1. Add form-based dashboard sessions and browser logout.
+2. Extend saved reward history with per-game mining time and verified export importers.
 3. Exercise Windows tray, autostart, sleep and startup-error behavior on packaged CI artifacts.
-4. Add webhook configuration and a test action to the dashboard.
+4. Add notification service presets and clearer delivery history.
 5. Publish example monitoring configuration for Docker users.

@@ -181,6 +181,7 @@ class BaseDrop:
             )
             self._twitch.gui.tray.notify(claim_text, _("gui", "tray", "notification_title"))
             if not was_claimed:
+                self._twitch.record_claim_history(self)
                 self._twitch.stats.claim()
         else:
             logger.error(f"Drop claim has potentially failed! Drop ID: {self.id}")

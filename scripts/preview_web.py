@@ -10,7 +10,7 @@ import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -18,6 +18,29 @@ ROOT = Path(__file__).resolve().parent.parent
 class PreviewHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
+        if path in {"/api/history", "/api/csrf"}:
+            if path == "/api/csrf":
+                payload = {"token": "read-only-preview"}
+            else:
+                payload = json.loads((ROOT / "tests/fixtures/history.json").read_text())
+                query = parse_qs(urlsplit(self.path).query)
+                game = query.get("game", [""])[0]
+                search = query.get("q", [""])[0].casefold()
+                items = [row for row in payload["items"] if
+                         (not game or (row["gameId"] or "unknown") == game) and
+                         search in f'{row["name"]} {row["gameName"]} {row["campaignName"]}'.casefold()]
+                try:
+                    offset = max(0, int(query.get("offset", ["0"])[0]))
+                except ValueError:
+                    offset = 0
+                payload.update(items=items[offset:offset + 50], total=len(items), offset=offset, limit=50)
+            data = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if path == "/api/events":
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -38,7 +61,7 @@ class PreviewHandler(BaseHTTPRequestHandler):
         if path in assets:
             file = ROOT / "web" / path.rsplit("/", 1)[-1]
             content_type = assets[path]
-        elif path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics") or path.startswith("/campaigns/"):
+        elif path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics", "/history") or path.startswith("/campaigns/"):
             file = ROOT / "web/index.html"
             content_type = "text/html"
         else:

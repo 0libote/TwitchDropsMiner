@@ -11,11 +11,12 @@ import sys
 import webbrowser
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import partial
+from ipaddress import ip_address
 from pathlib import Path
 from time import monotonic
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from aiohttp import web
@@ -52,6 +53,12 @@ def _drop_json(drop: TimedDrop) -> dict[str, Any]:
         "requiredMinutes": drop.required_minutes,
         "remainingMinutes": drop.remaining_minutes,
         "progress": round(drop.progress, 4),
+        "totalRemainingMinutes": drop.total_remaining_minutes,
+        "prerequisites": [
+            {"id": prerequisite.id, "name": prerequisite.name, "claimed": prerequisite.is_claimed}
+            for pid in drop.precondition_drops
+            if (prerequisite := drop.campaign.timed_drops.get(pid)) is not None
+        ],
         "startsAt": _iso(drop.starts_at),
         "endsAt": _iso(drop.ends_at),
         "benefits": [
@@ -202,6 +209,8 @@ class _Button:
     def config(self, **values: Any) -> None:
         if "state" in values:
             self.manager.can_logout = values["state"] == "normal"
+            if not self.manager.can_logout:
+                self.manager.login_state["userId"] = None
             self.manager.changed()
 
 
@@ -222,13 +231,13 @@ class TrayView(_Reactive):
         self.changed()
 
     def notify(self, message: str, title: str) -> None:
+        self.manager.send_webhook("claim", title, message)
         if not self.manager._twitch.settings.tray_notifications:
             return
         self.manager.notifications.appendleft(
             {"time": datetime.now(timezone.utc).isoformat(), "title": title, "message": message}
         )
         self.manager.native_tray.notify(message, title)
-        self.manager.send_webhook("claim", title, message)
         self.changed()
 
     def restore(self) -> None:
@@ -346,7 +355,10 @@ class WebUI:
         self.port = port
         self.open_browser = open_browser
         self.auth_token = os.environ.get("TDM_WEB_TOKEN", "")
-        self.webhook_url = os.environ.get("TDM_WEBHOOK_URL", "")
+        self.csrf_token = secrets.token_urlsafe(32)
+        self._webhook_tasks: set[asyncio.Task] = set()
+        self.last_watchdog = 0.0
+        self.recovery_reason: str | None = None
         self._close_requested = asyncio.Event()
         self._server_task: asyncio.Task[None] | None = None
         self._runner: web.AppRunner | None = None
@@ -380,6 +392,10 @@ class WebUI:
         self.channels = ChannelView(self)
         self.inv = InventoryView(self)
         self.settings = SettingsView(self)
+
+    @property
+    def webhook_url(self) -> str:
+        return os.environ.get("TDM_WEBHOOK_URL") or getattr(self._twitch.settings, "webhook_url", "")
 
     @property
     def running(self) -> bool:
@@ -416,6 +432,9 @@ class WebUI:
         }
         return {
             "revision": self._revision,
+            "paused": getattr(self._twitch, "paused", False),
+            "miningPlan": self._mining_plan(),
+            "progressHealth": self._progress_health(),
             "status": self.status_text,
             "activity": self.activity_state,
             "login": self.login_state,
@@ -439,6 +458,7 @@ class WebUI:
                 "packaged": bool(getattr(sys, "frozen", False)),
                 "dataDirectory": str(DATA_DIR),
                 "authenticationEnabled": bool(self.auth_token),
+                "webhookManagedByEnvironment": bool(os.environ.get("TDM_WEBHOOK_URL")),
             },
             "networkIssues": sorted(
                 host for host, failures in self._network_failures.items() if failures >= 2
@@ -455,6 +475,7 @@ class WebUI:
                 "autostart": getattr(settings, "autostart_tray", False),
                 "keepAwake": getattr(settings, "keep_awake", False),
                 "proxy": str(settings.proxy),
+                "webhookUrl": "" if os.environ.get("TDM_WEBHOOK_URL") else getattr(settings, "webhook_url", ""),
             },
             "summary": {
                 "campaigns": len(campaigns),
@@ -470,6 +491,75 @@ class WebUI:
             self._server_task.add_done_callback(self._server_stopped)
             self._clock_task = asyncio.create_task(self._clock_monitor())
 
+    def _progress_health(self) -> dict[str, Any]:
+        elapsed = self._twitch.seconds_without_progress() if hasattr(self._twitch, "seconds_without_progress") else None
+        stamp = getattr(self._twitch, "last_confirmed_progress_at", None)
+        return {
+            "lastConfirmedAt": (datetime.now(timezone.utc) - timedelta(seconds=max(0, monotonic() - stamp))).isoformat() if stamp is not None else None,
+            "secondsWithoutProgress": int(elapsed) if elapsed is not None else None,
+            "nextRecoveryInSeconds": int(max(0, 900 - elapsed, 900 - (monotonic() - self.last_watchdog))) if elapsed is not None else None,
+            "recoveryReason": self.recovery_reason,
+        }
+
+    def _mining_plan(self) -> list[dict[str, Any]]:
+        miner = self._twitch
+        games = getattr(miner, "wanted_games", [])
+        watching = miner.watching_channel.get_with_default(None)
+        current = miner.get_active_campaign(watching) if watching is not None else None
+        paused = getattr(miner, "paused", False)
+        now = datetime.now(timezone.utc)
+        planned = []
+        for game in games:
+            campaigns = [c for c in miner.inventory if c.game == game and not c.finished and c.eligible and not c.expired]
+            if not campaigns:
+                continue
+            active = current is not None and current in campaigns
+            live_campaigns = [c for c in campaigns if any(
+                miner.can_watch(ch) and c.can_earn(ch) for ch in miner.channels.values()
+            )]
+            campaign = current if active else min(live_campaigns or campaigns, key=lambda c: c.remaining_minutes)
+            live = active or campaign in live_campaigns
+            planned.append((game, campaign, active, live, len(campaigns) == 1))
+        # Live fallback mining can precede a preferred game with no eligible channel.
+        planned.sort(key=lambda item: 0 if item[2] else 1 if item[3] else 2)
+        elapsed = 0
+        predictable = not paused
+        result = []
+        for game, campaign, active, live, unambiguous in planned:
+            priority = game.name in miner.settings.priority
+            reason_code = "paused" if paused else "mining" if active else "queued" if live else "waiting"
+            reason = {"paused": "Mining paused", "mining": "Currently mining", "queued": "Priority game" if priority else "Selected by fallback rule", "waiting": "No eligible live channel discovered yet"}[reason_code]
+            # A current campaign has a useful estimate even when other campaigns in
+            # that game make the subsequent game-level schedule unknowable.
+            estimate = None
+            if predictable and live and (active or unambiguous):
+                elapsed += campaign.remaining_minutes
+                estimate = (now + timedelta(minutes=elapsed)).isoformat()
+                if now + timedelta(minutes=elapsed) > campaign.ends_at:
+                    estimate = None
+                    predictable = False
+            else:
+                predictable = False
+            if not unambiguous:
+                predictable = False
+            result.append({"game": game.name, "gameId": game.id, "campaignId": campaign.id,
+                "name": campaign.name, "image": str(campaign.image_url), "reason": reason,
+                "reasonCode": reason_code, "remainingMinutes": campaign.remaining_minutes,
+                "estimatedCompletionAt": estimate,
+                "endsAt": campaign.ends_at.isoformat(), "watching": active, "priority": priority})
+        # Keep blocked explicit preferences visible, without presenting them as scheduled work.
+        for game in miner.settings.priority:
+            if any(item["game"] == game for item in result):
+                continue
+            campaigns = [c for c in miner.inventory if c.game.name == game]
+            campaign = campaigns[0] if campaigns else None
+            reason = "Excluded by your mining plan" if game in miner.settings.exclude else "Account connection required" if any(not c.linked for c in campaigns) else "No eligible campaign selected"
+            result.append({"game": game, "gameId": campaign.game.id if campaign else None,
+                "campaignId": campaign.id if campaign else None, "image": str(campaign.image_url) if campaign else None,
+                "reason": reason, "reasonCode": "waiting", "remainingMinutes": None,
+                "estimatedCompletionAt": None, "endsAt": None, "watching": False, "priority": True})
+        return result
+
     def _server_stopped(self, task: asyncio.Task[None]) -> None:
         if task.cancelled() or self.close_requested:
             return
@@ -483,11 +573,13 @@ class WebUI:
         if self._clock_task is not None:
             self._clock_task.cancel()
         self.native_tray.stop()
+        for task in self._webhook_tasks:
+            task.cancel()
         set_keep_awake(False)
 
     def _build_app(self) -> web.Application:
-        app = web.Application(middlewares=[self._authentication, self._security_headers])
-        for path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics"):
+        app = web.Application(middlewares=[self._authentication, self._csrf_protection, self._security_headers])
+        for path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics", "/history"):
             app.router.add_get(path, self._index)
         app.router.add_get("/campaigns/{campaign_id}", self._index)
         app.router.add_get("/healthz", self._health)
@@ -497,6 +589,8 @@ class WebUI:
         app.router.add_get("/api/export", self._export)
         app.router.add_post("/api/import", self._import)
         app.router.add_get("/api/state", self._state)
+        app.router.add_get("/api/csrf", self._csrf)
+        app.router.add_get("/api/history", self._history)
         app.router.add_get("/api/events", self._events)
         app.router.add_post("/api/actions/{action}", self._action)
         app.router.add_post("/api/channels/{channel_id}", self._switch_channel)
@@ -525,6 +619,17 @@ class WebUI:
 
     @web.middleware
     async def _authentication(self, request: web.Request, handler: Any) -> web.StreamResponse:
+        hostname = request.url.host
+        public_host = URL(os.environ.get("TDM_PUBLIC_URL", "")).host
+        allowed = hostname in {"127.0.0.1", "localhost", "::1", public_host}
+        if not allowed and self.host not in {"127.0.0.1", "localhost", "::1"}:
+            try:
+                ip_address(hostname)
+                allowed = True
+            except ValueError:
+                pass
+        if not allowed:
+            raise web.HTTPForbidden(text="Unrecognised local dashboard host")
         if not self.auth_token or request.path == "/healthz":
             return await handler(request)
         expected = "Basic " + base64.b64encode(f"tdm:{self.auth_token}".encode()).decode()
@@ -533,10 +638,39 @@ class WebUI:
         return await handler(request)
 
     @web.middleware
+    async def _csrf_protection(self, request: web.Request, handler: Any) -> web.StreamResponse:
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            origin = request.headers.get("Origin")
+            expected_origin = os.environ.get("TDM_PUBLIC_URL", "").rstrip("/") or f"{request.scheme}://{request.host}"
+            if origin and origin != expected_origin:
+                raise web.HTTPForbidden(text="Cross-origin actions are not allowed")
+            if not secrets.compare_digest(request.headers.get("X-CSRF-Token", ""), self.csrf_token):
+                raise web.HTTPForbidden(text="Invalid request token; reload the dashboard and try again")
+        return await handler(request)
+
+    async def _csrf(self, request: web.Request) -> web.Response:
+        return web.json_response({"token": self.csrf_token}, headers={"Cache-Control": "no-store"})
+
+    async def _history(self, request: web.Request) -> web.Response:
+        history = getattr(self._twitch, "history", None)
+        account = getattr(getattr(self._twitch, "_auth_state", None), "user_id", None)
+        if not account:
+            raise web.HTTPConflict(text="Connect Twitch to view this account's saved history")
+        if history is None:
+            raise web.HTTPServiceUnavailable(text="Reward history is unavailable; check the process log")
+        try:
+            offset = max(0, int(request.query.get("offset", "0")))
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text="Invalid history offset") from exc
+        result = history.query(str(account), game_id=request.query.get("game") or None,
+            search=request.query.get("q", "")[:200], offset=offset, limit=50)
+        result["summary"] = history.summary(str(account))
+        return web.json_response(result, headers={"Cache-Control": "no-store"})
+
+    @web.middleware
     async def _security_headers(self, request: web.Request, handler: Any) -> web.StreamResponse:
         response = await handler(request)
-        if not request.path.startswith("/api/"):
-            response.headers["Cache-Control"] = "no-cache"
+        response.headers["Cache-Control"] = "no-store" if request.path.startswith("/api/") else "no-cache"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
@@ -584,6 +718,7 @@ class WebUI:
     async def _export(self, request: web.Request) -> web.Response:
         settings = self.snapshot()["settings"]
         settings["proxy"] = ""  # Proxy URLs may contain credentials; never export them.
+        settings["webhookUrl"] = ""  # Webhook paths often contain service credentials.
         payload: dict[str, Any] = {"settings": settings}
         if request.query.get("stats") == "1":
             payload["stats"] = self._twitch.stats.snapshot()["lifetime"]
@@ -592,10 +727,11 @@ class WebUI:
         })
 
     async def _import(self, request: web.Request) -> web.Response:
-        payload = await request.json()
-        values = payload.get("settings", payload)
-        request._read_bytes = json.dumps(values).encode()
-        return await self._update_settings(request)
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text="Import must be valid JSON") from exc
+        return self._apply_settings(payload.get("settings", payload) if isinstance(payload, dict) else payload)
 
     async def _state(self, request: web.Request) -> web.Response:
         del request
@@ -633,9 +769,19 @@ class WebUI:
         elif action == "restart":
             self._twitch.change_state(State.RESTART)
         elif action == "pause":
-            self._twitch.change_state(State.IDLE)
+            self._twitch.pause()
+        elif action == "resume":
+            self._twitch.resume()
+        elif action == "test-webhook":
+            if not self.webhook_url:
+                raise web.HTTPBadRequest(text="Save a webhook URL first")
+            if not await self._deliver_webhook("test", "Test notification", "Twitch Drops Miner notification test"):
+                raise web.HTTPBadGateway(text="Webhook delivery failed; check the URL and process log")
         elif action == "logout":
             self._twitch._auth_state.invalidate(delete_cookies=True)
+            self.login_state.update(userId=None, activationCode=None, activationUrl=None, status="Signed out")
+            self.can_logout = False
+            self.changed()
             self._twitch.change_state(State.RESTART)
         elif action == "shutdown":
             self.close()
@@ -661,45 +807,73 @@ class WebUI:
         return web.json_response({"ok": True})
 
     async def _update_settings(self, request: web.Request) -> web.Response:
-        payload = await request.json()
-        settings = self._twitch.settings
-        if "priority" in payload:
-            settings.priority = list(dict.fromkeys(map(str, payload["priority"])))
-        if "exclude" in payload:
-            settings.exclude = set(map(str, payload["exclude"]))
+        try:
+            payload = await request.json()
+        except (ValueError, TypeError) as exc:
+            raise web.HTTPBadRequest(text="Settings must be valid JSON") from exc
+        return self._apply_settings(payload)
+
+    def _apply_settings(self, payload: Any) -> web.Response:
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Settings must be an object")
+        candidate: dict[str, Any] = {}
+        for name in ("priority", "exclude"):
+            if name in payload:
+                values = payload[name]
+                if not isinstance(values, list) or len(values) > 1000 or any(not isinstance(v, str) or not v.strip() or len(v) > 200 for v in values):
+                    raise web.HTTPBadRequest(text=f"{name} must be a list of game names")
+                candidate[name] = list(dict.fromkeys(values)) if name == "priority" else set(values)
         if "priorityMode" in payload:
             try:
-                settings.priority_mode = PriorityMode[str(payload["priorityMode"])]
-            except KeyError as exc:
+                candidate["priority_mode"] = PriorityMode[payload["priorityMode"]]
+            except (KeyError, TypeError) as exc:
                 raise web.HTTPBadRequest(text="Invalid priority mode") from exc
         if "connectionQuality" in payload:
-            quality = int(payload["connectionQuality"])
-            if not 1 <= quality <= 6:
-                raise web.HTTPBadRequest(text="Connection quality must be between 1 and 6")
-            settings.connection_quality = quality
-        for json_name, attr_name in {
-            "trayNotifications": "tray_notifications",
-            "enableBadgesEmotes": "enable_badges_emotes",
-            "availableDropsCheck": "available_drops_check",
-            "keepAwake": "keep_awake",
+            value = payload["connectionQuality"]
+            if type(value) is not int or not 1 <= value <= 6:
+                raise web.HTTPBadRequest(text="Connection quality must be an integer between 1 and 6")
+            candidate["connection_quality"] = value
+        for name, attribute in {
+            "trayNotifications": "tray_notifications", "enableBadgesEmotes": "enable_badges_emotes",
+            "availableDropsCheck": "available_drops_check", "keepAwake": "keep_awake", "autostart": "autostart_tray",
         }.items():
-            if json_name in payload:
-                setattr(settings, attr_name, bool(payload[json_name]))
-        if "autostart" in payload:
-            settings.autostart_tray = bool(payload["autostart"])
-            set_windows_autostart(settings.autostart_tray)
-        if "proxy" in payload:
-            proxy = URL(str(payload["proxy"]).strip())
+            if name in payload:
+                if type(payload[name]) is not bool:
+                    raise web.HTTPBadRequest(text=f"{name} must be a boolean")
+                candidate[attribute] = payload[name]
+        for name, attribute in {"proxy": "proxy", "webhookUrl": "webhook_url"}.items():
+            if name not in payload:
+                continue
+            value = payload[name]
+            if not isinstance(value, str) or len(value) > 4096:
+                raise web.HTTPBadRequest(text=f"{name} must be a URL string")
             try:
-                valid_proxy = not proxy or (
-                    proxy.host is not None and proxy.explicit_port is not None
-                )
-            except ValueError:
-                valid_proxy = False
-            if not valid_proxy:
-                raise web.HTTPBadRequest(text="Proxy must include a host and port")
-            settings.proxy = proxy
-        settings.save()
+                url = URL(value.strip())
+                if url and (url.scheme not in {"http", "https"} or not url.host or (name == "proxy" and url.explicit_port is None)):
+                    raise ValueError()
+            except ValueError as exc:
+                raise web.HTTPBadRequest(text="Proxy must include an HTTP(S) host and port" if name == "proxy" else "Webhook must be an HTTP(S) URL") from exc
+            if name == "webhookUrl" and os.environ.get("TDM_WEBHOOK_URL"):
+                continue
+            candidate[attribute] = url if name == "proxy" else str(url)
+        settings = self._twitch.settings
+        previous = {name: getattr(settings, name, None) for name in candidate}
+        try:
+            for name, value in candidate.items():
+                setattr(settings, name, value)
+            if "autostart_tray" in candidate and candidate["autostart_tray"] != previous["autostart_tray"]:
+                set_windows_autostart(candidate["autostart_tray"])
+            settings.save()
+        except Exception as exc:
+            for name, value in previous.items():
+                setattr(settings, name, value)
+            if "autostart_tray" in candidate:
+                try:
+                    set_windows_autostart(bool(previous["autostart_tray"]))
+                except OSError:
+                    logger.exception("Unable to restore autostart after a failed save")
+            logger.exception("Settings save failed")
+            raise web.HTTPInternalServerError(text="Settings could not be saved") from exc
         self._twitch.change_state(State.GAMES_UPDATE)
         self.changed()
         return web.json_response({"ok": True})
@@ -786,29 +960,32 @@ class WebUI:
             return f"Twitch Drops Miner Next — {self.status_text}"
         return f"Twitch Drops Miner Next — {drop.rewards_text()} {drop.progress:.0%}"
 
+    async def _deliver_webhook(self, event: str, title: str, message: str) -> bool:
+        try:
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(self.webhook_url,
+                    json={"event": event, "title": title, "message": message},
+                    timeout=aiohttp.ClientTimeout(total=10), allow_redirects=False) as response,
+            ):
+                if 200 <= response.status < 300:
+                    return True
+                logger.warning("Webhook returned HTTP %s", response.status)
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, OSError):
+            # URLs can contain credentials: do not include exception text.
+            logger.warning("Webhook delivery failed")
+        return False
+
     def send_webhook(self, event: str, title: str, message: str) -> None:
         if not self.webhook_url:
             return
-
-        async def send() -> None:
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.webhook_url,
-                        json={"event": event, "title": title, "message": message},
-                        timeout=aiohttp.ClientTimeout(total=10),
-                    ) as response:
-                        if response.status >= 400:
-                            logger.warning("Webhook returned HTTP %s", response.status)
-            except Exception as exc:
-                logger.warning("Webhook delivery failed: %s", exc)
-
-        asyncio.create_task(send())
+        task = asyncio.create_task(self._deliver_webhook(event, title, message))
+        self._webhook_tasks.add(task)
+        task.add_done_callback(self._webhook_tasks.discard)
 
     async def _clock_monitor(self) -> None:
         """Refresh after suspend/resume and recover once when mining appears stalled."""
         previous = monotonic()
-        last_watchdog = 0.0
         while True:
             await asyncio.sleep(60)
             now = monotonic()
@@ -816,13 +993,13 @@ class WebUI:
                 self.print("System resumed; refreshing Twitch state")
                 self._twitch.change_state(State.INVENTORY_FETCH)
             previous = now
-            displayed_at = self.progress._displayed_at
-            if self.progress.drop is not None and displayed_at is not None:
-                if now - displayed_at >= 900 and now - last_watchdog >= 900:
-                    last_watchdog = now
-                    self.print("Mining progress appears stalled; refreshing inventory")
-                    self.send_webhook(
-                        "mining_stalled", "Mining progress stalled",
-                        "No confirmed progress for 15 minutes; an automatic refresh was requested.",
-                    )
-                    self._twitch.change_state(State.INVENTORY_FETCH)
+            elapsed = self._twitch.seconds_without_progress()
+            if elapsed is not None and elapsed >= 900 and now - self.last_watchdog >= 900:
+                self.last_watchdog = now
+                self.recovery_reason = "No confirmed progress for 15 minutes; inventory refresh requested"
+                self.print("Mining progress appears stalled; refreshing inventory")
+                self.send_webhook(
+                    "mining_stalled", "Mining progress stalled",
+                    "No confirmed progress for 15 minutes; an automatic refresh was requested.",
+                )
+                self._twitch.change_state(State.INVENTORY_FETCH)

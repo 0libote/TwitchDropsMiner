@@ -1,0 +1,31 @@
+{
+  "items": [
+    {
+      "benefitId": "preview-drop-0",
+      "name": "Explorer Badge",
+      "imageUrl": null,
+      "gameId": "509658",
+      "gameName": "Just Chatting",
+      "campaignId": "campaign-1",
+      "campaignName": "September Adventure Drops",
+      "lastAwardedAt": null,
+      "observedAt": "2026-09-04T11:00:00Z",
+      "source": "local",
+      "awardCount": null
+    }
+  ],
+  "summary": {
+    "rewardCount": 1,
+    "localClaimCount": 1,
+    "gameCount": 1,
+    "games": [
+      {
+        "id": "509658",
+        "name": "Just Chatting",
+        "rewardCount": 1
+      }
+    ],
+    "coverage": "Fictional preview rewards. Live history includes available Twitch inventory and locally recorded claims; older missing awards may be unavailable.",
+    "lastSyncedAt": "2026-09-04T11:00:00Z"
+  }
+}

@@ -9,3 +9,6 @@ __pycache__
 *.jar
 *.log
 settings.json
+node_modules
+history.sqlite3*
+stats.json

@@ -36,14 +36,19 @@ node tests/test_web_theme.cjs
 python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-The optional browser regression suite needs Playwright and its Chromium browser. Install these in a temporary directory to keep frontend tooling out of the application:
+The browser regression suite uses pinned, development-only Playwright and its Chromium browser:
 
 ```sh
-npm install --prefix /tmp/tdm-browser-tools playwright
-/tmp/tdm-browser-tools/node_modules/.bin/playwright install chromium
-PLAYWRIGHT_MODULE=/tmp/tdm-browser-tools/node_modules/playwright node tests/test_web_ui.cjs
+npm ci
+npx playwright install chromium
+npm test
 ```
 
-Run the preview server first. `TDM_PREVIEW_URL` can override its URL; `CHROMIUM_PATH` can select an existing browser executable. The suite intercepts all API requests and injects sample events. It checks themes, focus during updates, save behavior, the game picker, search, reconnect/paused/empty states, missing artwork, authorization, and all six routes at desktop, tablet and mobile widths. Desktop and mobile screenshots should also be reviewed when changing layout.
+Run the preview server first. `TDM_PREVIEW_URL` can override its URL; `CHROMIUM_PATH` can select an existing browser executable. The suite intercepts all API requests and injects sample events. It checks themes, focus during updates, save behavior, the game picker, search, reconnect/paused/empty states, missing artwork, authorization, and all seven routes at desktop, tablet and mobile widths. Desktop and mobile screenshots should also be reviewed when changing layout.
 
 Docker users receive the shared frontend when rebuilding with `docker compose up -d --build`. No settings migration is required.
+
+The saved History view distinguishes available Twitch inventory from local claim observations,
+keeps account data separate, and shows unknown dates/games explicitly. The dashboard mining
+plan comes from engine selection; estimates are qualified and omitted when timing is unknown.
+CSRF bootstrap, account changes, reward history and live focus retention are covered in CI.

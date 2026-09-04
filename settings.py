@@ -24,6 +24,7 @@ class SettingsFile(TypedDict):
     available_drops_check: bool
     priority_mode: PriorityMode
     keep_awake: bool
+    webhook_url: str
 
 
 default_settings: SettingsFile = {
@@ -39,6 +40,7 @@ default_settings: SettingsFile = {
     "available_drops_check": False,
     "priority_mode": PriorityMode.ENDING_SOONEST,
     "keep_awake": False,
+    "webhook_url": "",
 }
 
 

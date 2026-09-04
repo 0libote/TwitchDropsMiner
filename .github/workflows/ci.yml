@@ -25,6 +25,22 @@ jobs:
           python -m compileall -q .
           python -m unittest discover -s tests -v
           for file in lang/*.json; do python -m json.tool "$file" >/dev/null; done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify dashboard behavior and responsive layouts
+        run: |
+          python scripts/preview_web.py --port 8095 > /tmp/tdm-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid"' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8095/ >/dev/null; then break; fi
+            sleep 1
+          done
+          npm test
 
   docker:
     runs-on: ubuntu-latest
