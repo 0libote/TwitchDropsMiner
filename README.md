@@ -79,6 +79,9 @@ TDM_WEB_TOKEN=secret      Protect the dashboard with HTTP Basic auth (user: tdm)
 TDM_WEBHOOK_URL=https://  Send claim, network and watchdog events as JSON
 ```
 
+Choose **Settings → Appearance** for Graphite, Paper, Midnight, or your system’s light/dark theme.
+Appearance is saved per browser and applies to Docker and desktop dashboards.
+
 The dashboard exposes `/healthz` for liveness, `/readyz` for authenticated Twitch readiness,
 `/api/diagnostics` for redacted runtime details, and `/metrics` for basic Prometheus counters.
 See [ROADMAP.md](ROADMAP.md) for the current operational QoL feature status and planned upgrades.

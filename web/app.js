@@ -13,7 +13,7 @@ let settingsDirty = false;
 let currentPath = location.pathname;
 
 const routeMeta = {
-  dashboard: ["Miner", "Dashboard"],
+  dashboard: ["Twitch Drops Miner", "Overview"],
   campaigns: ["Inventory", "Campaigns"],
   campaign: ["Campaign", "Campaign details"],
   mining: ["Control", "Mining"],
@@ -192,15 +192,16 @@ function dashboardTemplate() {
     <div class="dashboard-grid">
       <section class="panel now-card" aria-labelledby="now-heading"><div class="now-body" id="now-body"></div></section>
       <section class="panel watching-card" aria-labelledby="watching-heading">
-        <div class="panel-header"><div><h2 id="watching-heading">Current session</h2><p class="muted">What the miner is using now</p></div><a class="button quiet small" href="/mining" data-route>Manage</a></div>
+        <div class="panel-header"><div><h2 id="watching-heading">Current session</h2><p class="muted">Stream & selection</p></div><a class="button quiet small" href="/mining" data-route>Manage</a></div>
         <div class="panel-body" id="session-facts"></div>
       </section>
     </div>
-    <div class="diagnostic-grid" id="stat-cards"></div>
+    <div class="session-strip" id="stat-cards" aria-label="Session statistics"></div>
+    <div class="dashboard-lower"><section>
     <div class="section-title"><div><h2>Mining plan</h2><p class="muted">Priority games are tried in this order</p></div><a class="button quiet small" href="/mining" data-route>Edit plan</a></div>
-    <section class="panel queue-preview" id="queue-preview"></section>
-    <div class="section-title"><div><h2>Recent activity</h2><p class="muted">The latest useful miner events</p></div><a class="button quiet small" href="/diagnostics" data-route>View diagnostics</a></div>
-    <section class="panel activity-preview" id="activity-preview"></section>`;
+    <section class="panel queue-preview" id="queue-preview"></section></section><section>
+    <div class="section-title"><div><h2>Recent activity</h2><p class="muted">Updates from your miner</p></div><a class="button quiet small" href="/diagnostics" data-route>View diagnostics</a></div>
+    <section class="panel activity-preview" id="activity-preview"></section></section></div>`;
 }
 
 function updateDashboard() {
@@ -209,34 +210,36 @@ function updateDashboard() {
   const channel = activeChannel();
   const kind = statusKind();
   const rewardImage = drop?.benefits?.[0]?.image;
-  const heading = drop?.rewards || (state.activity === "idle" ? "Mining is paused" : "Waiting for an eligible drop");
-  const explanation = drop ? `${campaign?.game || "Active campaign"} · ${drop.name}` : "The miner will continue when an eligible campaign and live channel are available.";
+  const heading = state.activity === "idle" ? "Mining is paused" : drop?.rewards || "Ready for the next drop";
+  const explanation = state.activity === "idle" ? "Resume mining when you’re ready. Your progress is saved." : drop ? `${campaign?.game || "Active campaign"} · ${drop.name}` : "The miner will continue when an eligible campaign and live channel are available.";
   $("#now-body").innerHTML = `
     <div>
       <div class="state-label"><span class="status-dot ${kind}"></span><span>${esc(state.status || "Running")}</span></div>
+      <p class="kicker">${drop ? "CURRENT REWARD" : "MINER STATUS"}</p>
       <h2 id="now-heading">${esc(heading)}</h2>
       <p class="now-meta">${esc(explanation)}</p>
       <div class="progress" role="progressbar" aria-label="Current drop progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round((drop?.progress || 0) * 100)}"><span style="width:${(drop?.progress || 0) * 100}%"></span></div>
-      <div class="progress-meta"><span>${Math.round((drop?.progress || 0) * 100)}% complete</span><span>${drop ? `${esc(formatMinutes(drop.remainingMinutes))} · around ${esc(formatDate(new Date(Date.now() + drop.remainingMinutes * 60000)))}` : "—"}</span></div>
+      <div class="progress-meta"><span>${Math.round((drop?.progress || 0) * 100)}% complete</span><span>${drop ? esc(formatMinutes(drop.remainingMinutes)) : "—"}</span></div>
+      ${campaign ? `<a class="reward-link" href="/campaigns/${encodeURIComponent(campaign.id)}" data-route>View campaign <span aria-hidden="true">↗</span></a>` : ""}
     </div>
     ${rewardImage ? `<img class="reward-image" src="${esc(rewardImage)}" alt="${esc(drop.rewards)}">` : `<div class="reward-fallback" aria-hidden="true">◆</div>`}`;
 
   $("#session-facts").innerHTML = `
     <div class="fact"><span>Game</span><strong>${esc(campaign?.game || "No game selected")}</strong></div>
-    <div class="fact"><span>Channel</span><strong>${esc(channel?.name || "Looking for a channel")}</strong></div>
+    <div class="fact"><span>Channel</span><strong>${channel ? `<a class="channel-link" href="${esc(channel.url)}" target="_blank" rel="noreferrer">${esc(channel.name)} ↗</a>` : "Looking for a channel"}</strong></div>
     <div class="fact"><span>Selection rule</span><strong>${esc(({PRIORITY_ONLY:"Priority list only",ENDING_SOONEST:"Ending soonest",LOW_AVBL_FIRST:"Lowest availability"})[state.settings.priorityMode] || "Automatic")}</strong></div>`;
 
   const priority = state.settings.priority;
-  $("#queue-preview").innerHTML = priority.length ? priority.slice(0, 5).map((game, index) => `<div class="queue-row"><span class="queue-number">${index + 1}</span><span><strong>${esc(game)}</strong><small>${index === 0 ? "First choice" : "After higher priorities"}</small></span>${campaign?.game === game ? '<span class="status-badge good">Mining</span>' : ""}</div>`).join("") : `<div class="empty-state"><div><strong>No priority games</strong><p>The miner is using its automatic ordering rule.</p></div></div>`;
+  $("#queue-preview").innerHTML = priority.length ? priority.slice(0, 5).map((game, index) => `<div class="queue-row"><span class="queue-number">${index + 1}</span><span><strong>${esc(game)}</strong><small>${index === 0 ? "First choice" : "After higher priorities"}</small></span>${campaign?.game === game && ["active", "pickaxe"].includes(state.activity) ? '<span class="status-badge good">Mining</span>' : ""}</div>`).join("") : `<div class="empty-state"><div><strong>No priority games</strong><p>The miner is using its automatic ordering rule.</p></div></div>`;
 
   const stats = state.stats || {session: {}, lifetime: {}, uptimeSeconds: 0};
   $("#stat-cards").innerHTML = `
-    <article class="panel diagnostic-card"><span>Uptime</span><strong>${esc(formatDuration(stats.uptimeSeconds || 0))}</strong><small>Current process</small></article>
-    <article class="panel diagnostic-card"><span>Drops claimed</span><strong>${stats.session.drops_claimed || 0}</strong><small>${stats.lifetime.drops_claimed || 0} lifetime</small></article>
-    <article class="panel diagnostic-card"><span>Mining time</span><strong>${stats.session.mining_minutes || 0}m</strong><small>${stats.lifetime.mining_minutes || 0}m lifetime</small></article>`;
+    <article class="session-stat"><span>Uptime</span><strong>${esc(formatDuration(stats.uptimeSeconds || 0))}</strong><small>Current process</small></article>
+    <article class="session-stat"><span>Drops claimed</span><strong>${stats.session.drops_claimed || 0}</strong><small>${stats.lifetime.drops_claimed || 0} lifetime</small></article>
+    <article class="session-stat"><span>Mining time</span><strong>${esc(formatDuration((stats.session.mining_minutes || 0) * 60))}</strong><small>${esc(formatDuration((stats.lifetime.mining_minutes || 0) * 60))} lifetime</small></article>`;
 
   const events = [...(state.notifications || []).map(item => ({title: item.title, text: item.message})), ...(state.messages || []).slice(-4).reverse().map(item => ({title: "Miner", text: item.message || item}))].slice(0, 5);
-  $("#activity-preview").innerHTML = events.length ? events.map(item => `<div class="activity-row"><span class="status-dot live"></span><span><strong>${esc(item.title)}</strong><small>${esc(item.text)}</small></span></div>`).join("") : `<div class="empty-state"><span>No activity yet</span></div>`;
+  $("#activity-preview").innerHTML = events.length ? events.map(item => `<div class="activity-row"><span class="activity-mark" aria-hidden="true">•</span><span><strong>${esc(item.title)}</strong><small>${esc(item.text)}</small></span></div>`).join("") : `<div class="empty-state"><span>No activity yet</span></div>`;
 }
 
 function campaignBadge(campaign) {
@@ -385,6 +388,11 @@ function settingsTemplate() {
     <div class="settings-layout">
       <div>
         <section class="panel setting-section">
+          <div class="panel-header"><div><h2>Appearance</h2><p class="muted">Choose a color theme</p></div></div>
+          <div class="theme-options" role="group" aria-label="Color theme">${Object.entries(themeNames).map(([value, label]) => `<button type="button" class="theme-option" data-theme-choice="${value}" aria-pressed="${themePreference === value}"><span class="theme-preview preview-${value}" aria-hidden="true"><i></i><i></i><i></i></span><span>${label}</span></button>`).join("")}</div>
+          <p class="theme-note">Applies immediately and is remembered in this browser. System follows your device’s light or dark appearance.</p>
+        </section>
+        <section class="panel setting-section">
           <div class="panel-header"><div><h2>Campaigns</h2><p class="muted">Control which kinds of drops can be mined</p></div></div>
           <div class="setting-row toggle-row"><div><strong>Badge and emote campaigns</strong><p>Include campaigns whose rewards are Twitch badges or emotes.</p></div><label class="switch"><input type="checkbox" data-setting="enableBadgesEmotes" ${settingsDraft.enableBadgesEmotes ? "checked" : ""} aria-label="Include badge and emote campaigns"><span></span></label></div>
           <div class="setting-row toggle-row"><div><strong>Verify drops on each channel</strong><p>Check campaign availability per channel before switching.</p></div><label class="switch"><input type="checkbox" data-setting="availableDropsCheck" ${settingsDraft.availableDropsCheck ? "checked" : ""} aria-label="Verify drops on each channel"><span></span></label></div>
@@ -406,7 +414,7 @@ function settingsTemplate() {
         ${saveBarTemplate()}
       </div>
       <aside>
-        <section class="panel side-note"><h3>Mining priorities moved</h3><p>Game priorities and exclusions now live under Mining because they affect everyday operation rather than application configuration.</p><a class="button secondary small" href="/mining" data-route style="display:inline-block;margin-top:13px">Open mining plan</a></section>
+        <section class="panel side-note"><h3>Your mining plan</h3><p>Choose your priority games, exclude others, and decide what to mine next.</p><a class="button secondary small" href="/mining" data-route style="display:inline-block;margin-top:13px">Open mining plan</a></section>
         <section class="panel danger-zone" style="margin-top:14px"><div class="panel-header"><div><h2>Account and system</h2><p class="muted">Actions that interrupt the miner</p></div></div><div class="panel-body button-row"><button class="button secondary small" data-action="logout" ${state.canLogout ? "" : "disabled"}>Disconnect Twitch</button><button class="button secondary small" data-action="restart">Restart miner</button><button class="button danger small" data-action="shutdown">Shut down</button></div></section>
       </aside>
     </div>`;
@@ -451,7 +459,7 @@ function renderRoute(force = false) {
   if (route.name === "campaign" && !changed && !settingsDirty) $("#view").innerHTML = campaignDetailTemplate(state.campaigns.find(item => item.id === route.id));
   if (route.name === "mining" && !changed && !settingsDirty) $("#view").innerHTML = miningTemplate();
   if (route.name === "mining") updateChannels();
-  if (route.name === "settings" && !changed && !settingsDirty) $("#view").innerHTML = settingsTemplate();
+  if (route.name === "settings" && !changed && !settingsDirty && !document.activeElement.closest("#view")) $("#view").innerHTML = settingsTemplate();
   if (route.name === "diagnostics" && !changed) $("#view").innerHTML = diagnosticsTemplate();
 }
 
@@ -542,6 +550,15 @@ function validProxy(value) {
 }
 
 document.addEventListener("click", async event => {
+  const themeButton = event.target.closest("[data-theme-choice]");
+  if (themeButton) {
+    themePreference = themeButton.dataset.themeChoice;
+    applyTheme();
+    $$('[data-theme-choice]').forEach(button => button.setAttribute("aria-pressed", String(button === themeButton)));
+    try { localStorage.setItem("tdm-theme", themePreference); }
+    catch (_) { toast("Theme applied. This browser could not save your preference.", true); }
+    return;
+  }
   const routeLink = event.target.closest("a[data-route]");
   if (routeLink && routeLink.origin === location.origin) {
     event.preventDefault();
