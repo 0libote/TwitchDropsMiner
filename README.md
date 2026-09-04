@@ -79,7 +79,9 @@ TDM_WEB_TOKEN=secret      Protect the dashboard with HTTP Basic auth (user: tdm)
 TDM_WEBHOOK_URL=https://  Send claim, network and watchdog events as JSON
 ```
 
-Choose **Settings → Appearance** for Graphite, Paper, Midnight, or your system’s light/dark theme.
+Choose **Settings → Appearance** for Graphite (charcoal and brass), Paper (warm light),
+Midnight (deep blue), Evergreen (forest and sage), or your system’s light/dark theme.
+The desktop sidebar also has a quick appearance selector.
 Appearance is saved per browser and applies to Docker and desktop dashboards.
 
 The dashboard exposes `/healthz` for liveness, `/readyz` for authenticated Twitch readiness,

@@ -15,7 +15,7 @@ function load(saved, dark, blocked = false) {
   vm.runInContext(source, context);
   return {root, meta, media};
 }
-for (const theme of ['graphite', 'paper', 'midnight']) {
+for (const theme of ['graphite', 'paper', 'midnight', 'evergreen']) {
   const {root, media} = load(theme, false);
   assert.equal(root.dataset.theme, theme);
   media.matches = true;
@@ -28,7 +28,7 @@ for (const saved of [null, 'invalid', 'system']) {
   media.matches = true;
   media.changed();
   assert.equal(root.dataset.theme, 'graphite');
-  assert.equal(meta.content, '#141716');
+  assert.equal(meta.content, '#17181b');
 }
 assert.equal(load(null, true, true).root.dataset.theme, 'graphite');
 console.log('Theme defaults, saved preferences, system changes and blocked storage passed.');

@@ -107,8 +107,8 @@
     {"id": 503, "name": "QuietQuest", "login": "quietquest", "url": "https://twitch.tv/quietquest", "online": false, "pending": false, "watching": false, "watchable": false, "game": "Minecraft", "viewers": null, "dropsEnabled": false, "title": null}
   ],
   "websockets": [{"id": 1, "status": "Connected", "topics": 17}],
-  "messages": ["Inventory loaded: 4 campaigns", "Watching AuroraPlays", "Drop progress updated to 63%"],
-  "notifications": [{"title": "Drop claimed", "message": "Explorer Badge was added to your inventory."}],
+  "messages": [{"time": "2026-09-04T10:00:00+00:00", "message": "Inventory loaded: 4 campaigns"}, {"time": "2026-09-04T10:01:00+00:00", "message": "Watching AuroraPlays"}, {"time": "2026-09-04T10:38:00+00:00", "message": "Drop progress updated to 63%"}],
+  "notifications": [{"title": "Drop claimed", "message": "Explorer Badge was added to your inventory.", "time": "2026-09-04T10:35:00+00:00"}],
   "networkIssues": [],
   "games": ["ARC Raiders", "Fortnite", "Just Chatting", "Minecraft", "Pokémon GO", "VALORANT", "World of Warcraft"],
   "settings": {
@@ -121,5 +121,7 @@
     "availableDropsCheck": true,
     "proxy": ""
   },
+  "system": {"platform": "Linux (preview)", "version": "preview", "upstreamVersion": "sample", "python": "3.12", "authenticationEnabled": false},
+  "stats": {"uptimeSeconds": 15620, "session": {"drops_claimed": 4, "mining_minutes": 186}, "lifetime": {"drops_claimed": 128, "mining_minutes": 9085, "watch_failures": 0, "watch_heartbeats": 274, "last_progress_at": "2026-09-04T10:38:00+00:00"}},
   "summary": {"campaigns": 4, "activeCampaigns": 2, "completedCampaigns": 1, "onlineChannels": 2}
 }
