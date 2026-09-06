@@ -6,7 +6,7 @@ import re
 import secrets
 import sys
 import json
-import random
+import random  # NOSONAR
 import string
 import asyncio
 import logging
@@ -335,7 +335,7 @@ class ExponentialBackoff:
     def __next__(self) -> float:
         value: float = (
             pow(self.base, self.steps)
-            * random.uniform(self.variance_min, self.variance_max)
+            * random.uniform(self.variance_min, self.variance_max)  # NOSONAR
             + self.shift
         )
         if value > self.maximum:

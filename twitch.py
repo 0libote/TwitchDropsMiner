@@ -669,7 +669,7 @@ class Twitch:
 
     async def run(self):
         if self.settings.dump:
-            with open(DUMP_PATH, 'w', encoding="utf8"):  # NOSONAR - debug dump, small file
+            with open(DUMP_PATH, 'w', encoding="utf8"):  # NOSONAR
                 # replace the existing file with an empty one
                 pass
         while True:
@@ -1553,7 +1553,7 @@ class Twitch:
 
         if self.settings.dump:
             # dump the campaigns data to the dump file
-            with open(DUMP_PATH, 'a', encoding="utf8") as file:  # NOSONAR - debug dump, small file
+            with open(DUMP_PATH, 'a', encoding="utf8") as file:  # NOSONAR
                 # we need to pre-process the inventory dump a little
                 dump_data: JsonType = deepcopy(inventory_data)
                 for campaign_data in dump_data.values():
