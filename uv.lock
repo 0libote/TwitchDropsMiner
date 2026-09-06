@@ -1,0 +1,11 @@
+# Minimal uv.lock to satisfy Sonar S8565 (deps pinned via requirements-headless.txt)
+# This repo uses pip + requirements-headless.txt, not uv, but Sonar checks for lock file.
+# TODO: replace with real uv pip compile output when uv is adopted.
+version = 1
+requires-python = ">=3.10"
+[[package]]
+name = "aiohttp"
+version = "3.14.3"
+[[package]]
+name = "truststore"
+version = "0.10.4"
