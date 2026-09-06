@@ -19,13 +19,17 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - run: pip install -r requirements-headless.txt ruff==0.16.6
+      - run: pip install -r requirements-headless.txt ruff==0.16.6 pip-audit
       - name: Validate Python and translations
         run: |
           ruff check .
           python -m compileall -q .
           python -m unittest discover -s tests -v
           for file in lang/*.json; do python -m json.tool "$file" >/dev/null; done
+      - name: Audit Python dependencies
+        run: pip-audit --disable-pip --local || true
+      - name: Audit JS dependencies
+        run: bun audit || true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2 # pinned to match packageManager in package.json
@@ -85,6 +89,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          sbom: true
+          provenance: mode=max
           tags: |
             ghcr.io/0libote/twitchdropsminer:latest
             ${{ startsWith(github.ref, 'refs/tags/v') && format('ghcr.io/0libote/twitchdropsminer:{0}', github.ref_name) || '' }}

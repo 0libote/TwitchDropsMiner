@@ -8,7 +8,7 @@ from pathlib import Path
 from copy import deepcopy
 from enum import Enum, auto
 from datetime import timedelta
-from typing import Any, Dict, Literal, NewType, TYPE_CHECKING
+from typing import Any, Literal, NewType, TYPE_CHECKING
 
 from yarl import URL
 
@@ -16,7 +16,7 @@ from fork_version import __version__
 
 if TYPE_CHECKING:
     from collections import abc  # noqa
-    from typing_extensions import TypeAlias
+    from typing import TypeAlias
 
 
 # True if we're running from a built EXE (or a Linux AppImage), False inside a dev build
@@ -104,7 +104,11 @@ elif IS_PACKAGED:
     DATA_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"), "tdm-next")
 else:
     DATA_DIR = WORKING_DIR
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+try:
+    DATA_DIR.chmod(0o700)
+except OSError:
+    pass
 # Development paths
 VENV_PATH = Path(WORKING_DIR, "env")
 SITE_PACKAGES_PATH = Path(VENV_PATH, SYS_SITE_PACKAGES)
@@ -121,7 +125,7 @@ CACHE_DB = Path(CACHE_PATH, "mapping.json")
 COOKIES_PATH = Path(DATA_DIR, "cookies.jar")
 SETTINGS_PATH = Path(DATA_DIR, "settings.json")
 # Typing
-JsonType = Dict[str, Any]
+JsonType = dict[str, Any]
 URLType = NewType("URLType", str)
 GQLOperation: TypeAlias = "GQLQuery | GQLPersistedQuery"
 TopicProcess: TypeAlias = "abc.Callable[[int, JsonType], Any]"

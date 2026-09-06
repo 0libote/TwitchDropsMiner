@@ -20,6 +20,12 @@ if __name__ == "__main__":
 
     truststore.inject_into_ssl()
 
+    # Private data (cookies/settings/history) must not be world-readable.
+    try:
+        os.umask(0o077)
+    except OSError:
+        pass
+
     from constants import FILE_FORMATTER, LOCK_PATH, LOGGING_LEVELS, LOG_PATH, SELF_PATH
     from exceptions import CaptchaRequired
     from settings import Settings
@@ -126,7 +132,9 @@ if __name__ == "__main__":
         logger = logging.getLogger("TwitchDrops")
         logger.setLevel(settings.logging_level)
         if settings.log:
-            handler = logging.FileHandler(LOG_PATH)
+            from logging.handlers import RotatingFileHandler
+
+            handler = RotatingFileHandler(LOG_PATH, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf8")
             handler.setFormatter(FILE_FORMATTER)
             logger.addHandler(handler)
         else:
@@ -159,7 +167,7 @@ if __name__ == "__main__":
         async def run_until_closed() -> None:
             miner_task = asyncio.create_task(client.run())
             close_task = asyncio.create_task(client.gui.wait_until_closed())
-            done, _pending = await asyncio.wait(
+            done, pending = await asyncio.wait(
                 (miner_task, close_task), return_when=asyncio.FIRST_COMPLETED
             )
             if close_task in done and not miner_task.done():
@@ -171,8 +179,17 @@ if __name__ == "__main__":
                     if fatal_error := getattr(client.gui, "fatal_error", None):
                         raise fatal_error from None
                     return
+                finally:
+                    for task in pending:
+                        task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
             close_task.cancel()
-            await miner_task
+            try:
+                await miner_task
+            finally:
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
 
         try:
             await run_until_closed()

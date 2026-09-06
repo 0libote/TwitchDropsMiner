@@ -79,6 +79,7 @@ TDM_LOG=1                 Enable the persistent log
 TDM_WEB_TOKEN=secret      Protect the dashboard with HTTP Basic auth (user: tdm)
 TDM_WEBHOOK_URL=https://  Send claim, network and watchdog events as JSON
 TDM_PUBLIC_URL=https://  Exact dashboard origin when using a hostname/reverse proxy
+TDM_ALLOWED_HOSTS=a,b     Extra hosts allowed to reach the dashboard (comma-separated)
 ```
 
 Choose **Settings → Appearance** for Graphite (charcoal and brass), Paper (warm light),
