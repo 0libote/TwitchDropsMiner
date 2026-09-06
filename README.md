@@ -212,7 +212,7 @@ Browser checks (also required by CI):
 
 ```bash
 bun install
-bunx playwright install chromium
+bunx --package playwright@1.62.1 playwright install --with-deps chromium # --with-deps required on Linux
 env/bin/python scripts/preview_web.py
 # In another terminal:
 bun run test

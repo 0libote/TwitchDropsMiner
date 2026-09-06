@@ -6,7 +6,7 @@ import re
 import secrets
 import sys
 import json
-import random  # NOSONAR
+import random
 import string
 import asyncio
 import logging
@@ -333,9 +333,10 @@ class ExponentialBackoff:
         return self
 
     def __next__(self) -> float:
+        # random is intentional for jitter (ExponentialBackoff); not crypto - see create_nonce for secrets usage
         value: float = (
             pow(self.base, self.steps)
-            * random.uniform(self.variance_min, self.variance_max)  # NOSONAR
+            * random.uniform(self.variance_min, self.variance_max)
             + self.shift
         )
         if value > self.maximum:

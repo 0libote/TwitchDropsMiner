@@ -7,7 +7,7 @@ updates:
     labels: ["dependencies", "python"]
     commit-message:
       prefix: "chore"
-  - package-ecosystem: "bun"
+  - package-ecosystem: "bun" # parses bun.lock (text) and bun.lockb; verify first PR on this branch
     directory: "/"
     schedule:
       interval: "weekly"

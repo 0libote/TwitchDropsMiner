@@ -12,7 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.16",
+    "ruff==0.16.6",  # keep in sync with ci.yml pip install
 ]
 gui = [
     "Pillow",
@@ -28,6 +28,7 @@ line-length = 88
 [tool.ruff.lint]
 # Keep lint tight on new code; formatting/isort are intentionally not enforced
 # on the vendored upstream engine to avoid large Sonar diffs.
+# TODO: re-enable I/UP (isort/pyupgrade) after legacy engine reformat
 select = ["E", "F"]
 ignore = ["E501", "E731"]
 

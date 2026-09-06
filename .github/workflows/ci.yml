@@ -26,11 +26,12 @@ jobs:
           python -m compileall -q .
           python -m unittest discover -s tests -v
           for file in lang/*.json; do python -m json.tool "$file" >/dev/null; done
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 # NOSONAR
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile --ignore-scripts # NOSONAR
-      - run: bunx --package playwright@1.62.1 playwright install --with-deps chromium # NOSONAR
+          bun-version: 1.4.2 # pinned to match packageManager in package.json
+      - run: bun install --frozen-lockfile --ignore-scripts
+      # Keep --package version in sync with package.json:devDependencies.playwright and bun.lock
+      - run: bunx --package playwright@1.62.1 playwright install --with-deps chromium
       - name: Verify dashboard behavior and responsive layouts
         run: |
           python scripts/preview_web.py --port 8095 > /tmp/tdm-preview.log 2>&1 &

@@ -40,7 +40,7 @@ The browser regression suite uses pinned, development-only Playwright and its Ch
 
 ```sh
 bun install
-bunx playwright install chromium
+bunx --package playwright@1.62.1 playwright install --with-deps chromium # --with-deps for Linux deps
 bun run test
 ```
 
