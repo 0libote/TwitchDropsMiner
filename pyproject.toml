@@ -29,7 +29,7 @@ line-length = 88
 # Keep lint tight on new code; formatting/isort are intentionally not enforced
 # on the vendored upstream engine to avoid large Sonar diffs.
 select = ["E", "F"]
-ignore = ["E501"]
+ignore = ["E501", "E731"]
 
 [tool.ruff.format]
 quote-style = "double"
