@@ -1,22 +1,22 @@
 from __future__ import annotations
 
-import logging
 import os
-import random
 import sys
-from copy import deepcopy
-from datetime import timedelta
-from enum import Enum, auto
+import random
+import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, NewType
+from copy import deepcopy
+from enum import Enum, auto
+from datetime import timedelta
+from typing import Any, Dict, Literal, NewType, TYPE_CHECKING
 
 from yarl import URL
 
 from fork_version import __version__
 
 if TYPE_CHECKING:
-    from collections import abc
-    from typing import TypeAlias
+    from collections import abc  # noqa
+    from typing_extensions import TypeAlias
 
 
 # True if we're running from a built EXE (or a Linux AppImage), False inside a dev build
@@ -32,9 +32,7 @@ else:
     # On Linux, the site-packages path includes a versioned 'pythonX.Y' folder part
     # The Lib folder is also spelled in lowercase: 'lib'
     version_info = sys.version_info
-    SYS_SITE_PACKAGES = (
-        f"lib/python{version_info.major}.{version_info.minor}/site-packages"
-    )
+    SYS_SITE_PACKAGES = f"lib/python{version_info.major}.{version_info.minor}/site-packages"
 # scripts venv path changes depending on the system platform
 if sys.platform == "win32":
     SYS_SCRIPTS = "Scripts"
@@ -52,7 +50,7 @@ def _resource_path(relative_path: Path | str) -> Path:
         base_path = Path(sys.argv[0]).resolve().parent
     elif IS_PACKAGED:
         # PyInstaller's folder where the one-file app is unpacked
-        meipass: str = sys._MEIPASS
+        meipass: str = getattr(sys, "_MEIPASS")
         base_path = Path(meipass)
     else:
         base_path = WORKING_DIR
@@ -99,15 +97,11 @@ WORKING_DIR = SELF_PATH.parent
 if data_dir := os.environ.get("TDM_DATA_DIR"):
     DATA_DIR = Path(data_dir).expanduser().resolve()
 elif IS_PACKAGED and sys.platform == "win32":
-    DATA_DIR = Path(
-        os.environ.get("LOCALAPPDATA", Path.home()), "Twitch Drops Miner Next"
-    )
+    DATA_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home()), "Twitch Drops Miner Next")
 elif IS_PACKAGED and sys.platform == "darwin":
     DATA_DIR = Path.home() / "Library/Application Support/Twitch Drops Miner Next"
 elif IS_PACKAGED:
-    DATA_DIR = Path(
-        os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"), "tdm-next"
-    )
+    DATA_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"), "tdm-next")
 else:
     DATA_DIR = WORKING_DIR
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -127,7 +121,7 @@ CACHE_DB = Path(CACHE_PATH, "mapping.json")
 COOKIES_PATH = Path(DATA_DIR, "cookies.jar")
 SETTINGS_PATH = Path(DATA_DIR, "settings.json")
 # Typing
-JsonType = dict[str, Any]
+JsonType = Dict[str, Any]
 URLType = NewType("URLType", str)
 GQLOperation: TypeAlias = "GQLQuery | GQLPersistedQuery"
 TopicProcess: TypeAlias = "abc.Callable[[int, JsonType], Any]"
@@ -159,18 +153,14 @@ LOGGING_LEVELS = {
 }
 FILE_FORMATTER = logging.Formatter(
     "{asctime}.{msecs:03.0f}:\t{levelname:>7}:\t{message}",
-    style="{",
+    style='{',
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-OUTPUT_FORMATTER = logging.Formatter(
-    "{levelname}: {message}", style="{", datefmt="%H:%M:%S"
-)
+OUTPUT_FORMATTER = logging.Formatter("{levelname}: {message}", style='{', datefmt="%H:%M:%S")
 
 
 class ClientInfo:
-    def __init__(
-        self, client_url: URL, client_id: str, user_agents: str | list[str]
-    ) -> None:
+    def __init__(self, client_url: URL, client_id: str, user_agents: str | list[str]) -> None:
         self.CLIENT_URL: URL = client_url
         self.CLIENT_ID: str = client_id
         self.USER_AGENT: str
@@ -226,7 +216,7 @@ class ClientType:
                 "Mozilla/5.0 (Linux; Android 16; LM-X420) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/138.0.7204.158 Mobile Safari/537.36"
             ),
-        ],
+        ]
     )
     ANDROID_APP = ClientInfo(
         URL("https://www.twitch.tv"),
@@ -260,7 +250,7 @@ class ClientType:
                 "Dalvik/2.1.0 (Linux; U; Android 14; SM-X306B Build/UP1A.231005.007) "
                 "tv.twitch.android.app/25.3.0/2503006"
             ),
-        ],
+        ]
     )
     SMARTBOX = ClientInfo(
         URL("https://android.tv.twitch.tv"),
@@ -299,7 +289,7 @@ class GQLQuery(JsonType):
                     "repository": "twilight",
                     "encoding": "GZIP_B64",
                 }
-            },
+            }
         )
 
 
@@ -312,7 +302,7 @@ class GQLPersistedQuery(JsonType):
                     "version": 1,
                     "sha256Hash": sha256,
                 }
-            },
+            }
         )
         if variables is not None:
             self.__setitem__("variables", variables)
@@ -371,7 +361,7 @@ GQL_QUERIES: dict[str, GQLPersistedQuery] = {
         "8337eb8541b314040b0edde0c09c5c7a2783ba1960aa9edfbf3bac16d0fec404",
         variables={
             "fetchRewardCampaigns": False,
-        },
+        }
     ),
     # returns current state of drops (current drop progress)
     "CurrentDrop": GQLPersistedQuery(
@@ -388,7 +378,7 @@ GQL_QUERIES: dict[str, GQLPersistedQuery] = {
         "d9cae7761dafab85908c85e6683cb4201b449e66ac3bb5e894f15ff12aeafaa7",
         variables={
             "fetchRewardCampaigns": False,
-        },
+        }
     ),
     # returns extended information about a particular campaign
     "CampaignDetails": GQLPersistedQuery(

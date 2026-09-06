@@ -7,6 +7,7 @@ from typing import Any
 from constants import DATA_DIR
 from utils import json_load, json_save
 
+
 STATS_PATH = DATA_DIR / "stats.json"
 DEFAULTS: dict[str, Any] = {
     "drops_claimed": 0,
@@ -39,9 +40,7 @@ class Stats:
         self.session["started_count"] = 1
         self.save()
 
-    def increment(
-        self, name: str, amount: int = 1, *, stamp: str | None = None
-    ) -> None:
+    def increment(self, name: str, amount: int = 1, *, stamp: str | None = None) -> None:
         self.lifetime[name] = int(self.lifetime.get(name, 0)) + amount
         self.session[name] = int(self.session.get(name, 0)) + amount
         if stamp:

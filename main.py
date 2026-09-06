@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from multiprocessing import freeze_support
 
+
 if __name__ == "__main__":
     freeze_support()
 
@@ -19,13 +20,13 @@ if __name__ == "__main__":
 
     truststore.inject_into_ssl()
 
-    from constants import FILE_FORMATTER, LOCK_PATH, LOG_PATH, LOGGING_LEVELS, SELF_PATH
+    from constants import FILE_FORMATTER, LOCK_PATH, LOGGING_LEVELS, LOG_PATH, SELF_PATH
     from exceptions import CaptchaRequired
-    from fork_version import __version__
     from settings import Settings
     from translate import _
     from twitch import Twitch
     from utils import lock_file
+    from fork_version import __version__
     from version import __version__ as upstream_version
     from webui import WebUI
 
@@ -77,15 +78,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("-v", dest="_verbose", action="count", default=0)
     parser.add_argument(
-        "--log",
-        action="store_true",
+        "--log", action="store_true",
         default=os.environ.get("TDM_LOG", "").lower() in {"1", "true", "yes"},
         help="write logs to the data directory",
     )
     parser.add_argument("--dump", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument(
-        "--tray", action="store_true", help="start minimized with a tray icon"
-    )
+    parser.add_argument("--tray", action="store_true", help="start minimized with a tray icon")
     parser.add_argument(
         "--legacy-ui",
         action="store_true",
@@ -108,12 +106,8 @@ if __name__ == "__main__":
         default=os.environ.get("TDM_NO_BROWSER", "").lower() in {"1", "true", "yes"},
         help="do not open the dashboard in a browser",
     )
-    parser.add_argument(
-        "--debug-ws", dest="_debug_ws", action="store_true", help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--debug-gql", dest="_debug_gql", action="store_true", help=argparse.SUPPRESS
-    )
+    parser.add_argument("--debug-ws", dest="_debug_ws", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--debug-gql", dest="_debug_gql", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(namespace=ParsedArgs())
 
     try:
@@ -190,13 +184,7 @@ if __name__ == "__main__":
             exit_status = 1
             if sys.platform == "win32":
                 from platform_qol import show_startup_error
-
-                show_startup_error(
-                    str(
-                        getattr(client.gui, "fatal_error", None)
-                        or "Fatal miner error. See log.txt for details."
-                    )
-                )
+                show_startup_error(str(getattr(client.gui, "fatal_error", None) or "Fatal miner error. See log.txt for details."))
             if getattr(client.gui, "fatal_error", None):
                 logger.critical("Dashboard failed:\n%s", traceback.format_exc())
                 client.gui.close()
@@ -225,10 +213,7 @@ if __name__ == "__main__":
     if not locked:
         if sys.platform == "win32":
             from platform_qol import show_startup_error
-
-            show_startup_error(
-                "Twitch Drops Miner is already running for this data directory."
-            )
+            show_startup_error("Twitch Drops Miner is already running for this data directory.")
         parser.error("Twitch Drops Miner is already running for this data directory.")
     try:
         raise SystemExit(asyncio.run(run()))
