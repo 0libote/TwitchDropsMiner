@@ -7,6 +7,7 @@ import logging
 import os
 import random
 import re
+import secrets
 import string
 import sys
 import traceback
@@ -139,7 +140,8 @@ CHARS_HEX_UPPER = string.digits + "ABCDEF"
 
 
 def create_nonce(chars: str, length: int) -> str:
-    return "".join(random.choices(chars, k=length))
+    # secrets is used for Twitch nonces that become part of auth-adjacent values
+    return "".join(secrets.choice(chars) for _ in range(length))
 
 
 def deduplicate(iterable: abc.Iterable[_T]) -> list[_T]:
