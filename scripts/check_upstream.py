@@ -5,7 +5,6 @@ import argparse
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BASE_FILE = ROOT / ".upstream-base"
 BACKEND_FILES = {
@@ -33,7 +32,9 @@ def report(upstream_ref: str) -> tuple[bool, str]:
     if base == head:
         return False, f"Upstream is current at `{head[:12]}`."
 
-    commits = git("log", "--no-merges", "--date=short", "--pretty=%h|%ad|%s", f"{base}..{head}")
+    commits = git(
+        "log", "--no-merges", "--date=short", "--pretty=%h|%ad|%s", f"{base}..{head}"
+    )
     changed_output = git("diff", "--name-only", f"{base}..{head}")
     changed = [line for line in changed_output.splitlines() if line]
     backend = [path for path in changed if path in BACKEND_FILES]
@@ -73,10 +74,14 @@ def report(upstream_ref: str) -> tuple[bool, str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Report unreviewed TwitchDropsMiner changes")
+    parser = argparse.ArgumentParser(
+        description="Report unreviewed TwitchDropsMiner changes"
+    )
     parser.add_argument("--upstream-ref", default="upstream/master")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--check", action="store_true", help="exit 1 when updates exist")
+    parser.add_argument(
+        "--check", action="store_true", help="exit 1 when updates exist"
+    )
     args = parser.parse_args()
     has_updates, text = report(args.upstream_ref)
     if args.output:

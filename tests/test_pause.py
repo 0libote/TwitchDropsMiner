@@ -10,9 +10,13 @@ from twitch import Twitch
 
 class PauseTests(unittest.TestCase):
     def setUp(self) -> None:
-        with patch('twitch.Stats'), patch('twitch.History'), patch('twitch.WebsocketPool'):
+        with (
+            patch("twitch.Stats"),
+            patch("twitch.History"),
+            patch("twitch.WebsocketPool"),
+        ):
             self.miner = Twitch(SimpleNamespace(), ui_factory=lambda _: Mock())
-        self.channel = Mock(id=1, name='test', online=True)
+        self.channel = Mock(id=1, name="test", online=True)
 
     def test_pause_stops_immediately_and_blocks_background_transitions(self) -> None:
         self.miner.watch(self.channel, update_status=False)
@@ -49,15 +53,17 @@ class PauseTests(unittest.TestCase):
 
     def test_only_increasing_confirmed_progress_resets_stall_time(self) -> None:
         drop = SimpleNamespace(real_current_minutes=3)
-        drop.update_minutes = lambda minutes: setattr(drop, 'real_current_minutes', minutes)
-        with patch('twitch.monotonic', return_value=100):
+        drop.update_minutes = lambda minutes: setattr(
+            drop, "real_current_minutes", minutes
+        )
+        with patch("twitch.monotonic", return_value=100):
             self.miner.watch(self.channel, update_status=False)
-        with patch('twitch.monotonic', return_value=200):
+        with patch("twitch.monotonic", return_value=200):
             self.miner._update_confirmed_minutes(drop, 3)
             self.assertEqual(self.miner.seconds_without_progress(), 100)
             self.miner._update_confirmed_minutes(drop, 4)
             self.assertEqual(self.miner.seconds_without_progress(), 0)
-        with patch('twitch.monotonic', return_value=250):
+        with patch("twitch.monotonic", return_value=250):
             self.miner._update_confirmed_minutes(drop, 3)
             self.assertEqual(self.miner.seconds_without_progress(), 50)
         self.miner.pause()
@@ -69,7 +75,11 @@ class InFlightPauseTests(unittest.IsolatedAsyncioTestCase):
         import asyncio
         from unittest.mock import AsyncMock
 
-        with patch('twitch.Stats'), patch('twitch.History'), patch('twitch.WebsocketPool'):
+        with (
+            patch("twitch.Stats"),
+            patch("twitch.History"),
+            patch("twitch.WebsocketPool"),
+        ):
             miner = Twitch(SimpleNamespace(), ui_factory=lambda _: Mock())
         finished_request = asyncio.Event()
 

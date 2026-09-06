@@ -16,8 +16,9 @@ class HeadlessImportTests(unittest.TestCase):
     def test_stats_are_persisted(self) -> None:
         import stats
 
-        with tempfile.TemporaryDirectory() as directory, patch.object(
-            stats, "STATS_PATH", Path(directory) / "stats.json"
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(stats, "STATS_PATH", Path(directory) / "stats.json"),
         ):
             first = stats.Stats()
             first.progress(3)
@@ -112,11 +113,18 @@ class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
         from webui import WebUI
 
         twitch = SimpleNamespace(
-            watching_channel=AwaitableValue(), inventory=[], channels={},
+            watching_channel=AwaitableValue(),
+            inventory=[],
+            channels={},
             settings=SimpleNamespace(
-                priority=[], exclude=set(), priority_mode=SimpleNamespace(name="PRIORITY_ONLY"),
-                connection_quality=1, tray_notifications=True, enable_badges_emotes=False,
-                available_drops_check=False, proxy="",
+                priority=[],
+                exclude=set(),
+                priority_mode=SimpleNamespace(name="PRIORITY_ONLY"),
+                connection_quality=1,
+                tray_notifications=True,
+                enable_badges_emotes=False,
+                available_drops_check=False,
+                proxy="",
             ),
             can_watch=Mock(),
         )
@@ -127,7 +135,11 @@ class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await client.get("/healthz")).status, 200)
             self.assertEqual((await client.get("/")).status, 401)
             self.assertEqual(
-                (await client.get("/", headers={"Authorization": "Basic dGRtOnNlY3JldA=="})).status,
+                (
+                    await client.get(
+                        "/", headers={"Authorization": "Basic dGRtOnNlY3JldA=="}
+                    )
+                ).status,
                 200,
             )
         finally:
@@ -185,20 +197,39 @@ class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
         from webui import WebUI
 
         settings = SimpleNamespace(
-            priority=[], exclude=set(), priority_mode=SimpleNamespace(name="PRIORITY_ONLY"),
-            connection_quality=1, tray_notifications=True, enable_badges_emotes=False,
-            available_drops_check=False, autostart_tray=False, keep_awake=False, proxy="",
+            priority=[],
+            exclude=set(),
+            priority_mode=SimpleNamespace(name="PRIORITY_ONLY"),
+            connection_quality=1,
+            tray_notifications=True,
+            enable_badges_emotes=False,
+            available_drops_check=False,
+            autostart_tray=False,
+            keep_awake=False,
+            proxy="",
         )
         stats = Mock()
         stats.snapshot.return_value = {
-            "startedAt": "2026-01-01T00:00:00+00:00", "uptimeSeconds": 60,
-            "session": {}, "lifetime": {"drops_claimed": 2, "mining_minutes": 10,
-            "channel_switches": 1, "watch_failures": 0, "watch_heartbeats": 10},
-            "lastInventoryAt": None, "lastRecoveryAt": None,
+            "startedAt": "2026-01-01T00:00:00+00:00",
+            "uptimeSeconds": 60,
+            "session": {},
+            "lifetime": {
+                "drops_claimed": 2,
+                "mining_minutes": 10,
+                "channel_switches": 1,
+                "watch_failures": 0,
+                "watch_heartbeats": 10,
+            },
+            "lastInventoryAt": None,
+            "lastRecoveryAt": None,
         }
         twitch = SimpleNamespace(
-            watching_channel=AwaitableValue(), inventory=[], channels={}, settings=settings,
-            stats=stats, can_watch=Mock(),
+            watching_channel=AwaitableValue(),
+            inventory=[],
+            channels={},
+            settings=settings,
+            stats=stats,
+            can_watch=Mock(),
         )
         client = TestClient(TestServer(WebUI(twitch)._build_app()))
         await client.start_server()

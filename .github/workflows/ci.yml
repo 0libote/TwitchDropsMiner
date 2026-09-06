@@ -19,18 +19,19 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - run: pip install -r requirements-headless.txt
+      - run: pip install -r requirements-headless.txt ruff
       - name: Validate Python and translations
         run: |
+          ruff check .
+          ruff format --check .
           python -m compileall -q .
           python -m unittest discover -s tests -v
           for file in lang/*.json; do python -m json.tool "$file" >/dev/null; done
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: "22"
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
       - name: Verify dashboard behavior and responsive layouts
         run: |
           python scripts/preview_web.py --port 8095 > /tmp/tdm-preview.log 2>&1 &
@@ -40,7 +41,7 @@ jobs:
             if curl --fail --silent http://127.0.0.1:8095/ >/dev/null; then break; fi
             sleep 1
           done
-          npm test
+          bun run test
 
   docker:
     runs-on: ubuntu-latest

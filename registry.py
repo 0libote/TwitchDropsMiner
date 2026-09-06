@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import winreg as reg
-from typing import Any
-from enum import Enum, Flag
 from collections.abc import Generator
+from enum import Enum, Flag
+from typing import Any
 
 
 class RegistryError(Exception):
@@ -59,7 +59,7 @@ class ValueType(Enum):
 
 class RegistryKey:
     def __init__(self, path: str, *, read_only: bool = False):
-        main_key, _, path = path.replace('/', '\\').partition('\\')
+        main_key, _, path = path.replace("/", "\\").partition("\\")
         self.main_key = MainKey[main_key]
         self.path = path
         access_flags = Access.KEY_QUERY_VALUE

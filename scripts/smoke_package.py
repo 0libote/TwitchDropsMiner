@@ -46,7 +46,9 @@ def main() -> int:
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
                 if process.poll() is not None:
-                    raise RuntimeError(f"Packaged app exited with status {process.returncode}")
+                    raise RuntimeError(
+                        f"Packaged app exited with status {process.returncode}"
+                    )
                 try:
                     with urllib.request.urlopen(
                         f"http://127.0.0.1:{port}/healthz", timeout=1
@@ -56,7 +58,9 @@ def main() -> int:
                             return 0
                 except OSError:
                     time.sleep(0.25)
-            raise RuntimeError("Packaged dashboard did not become healthy within 30 seconds")
+            raise RuntimeError(
+                "Packaged dashboard did not become healthy within 30 seconds"
+            )
         finally:
             if process.poll() is None:
                 process.terminate()

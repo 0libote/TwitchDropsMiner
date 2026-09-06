@@ -1,34 +1,34 @@
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 import logging
-from time import time
 from contextlib import suppress
-from typing import Any, Literal, TYPE_CHECKING
+from time import time
+from typing import TYPE_CHECKING, Any, Literal
 
 import aiohttp
 
-from translate import _
+from constants import MAX_WEBSOCKETS, PING_INTERVAL, PING_TIMEOUT, WS_TOPICS_LIMIT
 from exceptions import MinerException, WebsocketClosed
-from constants import PING_INTERVAL, PING_TIMEOUT, MAX_WEBSOCKETS, WS_TOPICS_LIMIT
+from translate import _
 from utils import (
     CHARS_ASCII,
-    chunk,
-    task_wrapper,
-    create_nonce,
-    json_minify,
-    format_traceback,
     AwaitableValue,
     ExponentialBackoff,
+    chunk,
+    create_nonce,
+    format_traceback,
+    json_minify,
+    task_wrapper,
 )
 
 if TYPE_CHECKING:
     from collections import abc
 
-    from twitch import Twitch
-    from gui import WebsocketStatus
     from constants import JsonType, WebsocketTopic
+    from gui import WebsocketStatus
+    from twitch import Twitch
 
 
 WSMsgType = aiohttp.WSMsgType
@@ -71,7 +71,9 @@ class Websocket:
 
     def set_status(self, status: str | None = None, refresh_topics: bool = False):
         self._twitch.gui.websockets.update(
-            self._idx, status=status, topics=(len(self.topics) if refresh_topics else None)
+            self._idx,
+            status=status,
+            topics=(len(self.topics) if refresh_topics else None),
         )
 
     def request_reconnect(self):
@@ -151,7 +153,8 @@ class Websocket:
         self._closed.clear()
         # Connect/Reconnect loop
         async for websocket in self._backoff_connect(
-            "wss://pubsub-edge.twitch.tv/v1", maximum=3*60  # 3 minutes maximum backoff time
+            "wss://pubsub-edge.twitch.tv/v1",
+            maximum=3 * 60,  # 3 minutes maximum backoff time
         ):
             self._ws.set(websocket)
             self._reconnect_requested.clear()
@@ -191,11 +194,15 @@ class Websocket:
         now = time()
         if now >= self._next_ping:
             self._next_ping = now + PING_INTERVAL.total_seconds()
-            self._max_pong = now + PING_TIMEOUT.total_seconds()  # wait for a PONG for up to 10s
+            self._max_pong = (
+                now + PING_TIMEOUT.total_seconds()
+            )  # wait for a PONG for up to 10s
             await self.send({"type": "PING"})
         elif now >= self._max_pong:
             # it's been more than 10s and there was no PONG
-            ws_logger.warning(f"Websocket[{self._idx}] didn't receive a PONG, reconnecting...")
+            ws_logger.warning(
+                f"Websocket[{self._idx}] didn't receive a PONG, reconnecting..."
+            )
             self.request_reconnect()
 
     async def _handle_topics(self):
@@ -210,7 +217,9 @@ class Websocket:
         removed = self._submitted.difference(current)
         if removed:
             topics_list = list(map(str, removed))
-            ws_logger.debug(f"Websocket[{self._idx}]: Removing topics: {', '.join(topics_list)}")
+            ws_logger.debug(
+                f"Websocket[{self._idx}]: Removing topics: {', '.join(topics_list)}"
+            )
             for topics in chunk(topics_list, 20):
                 await self.send(
                     {
@@ -218,7 +227,7 @@ class Websocket:
                         "data": {
                             "topics": topics,
                             "auth_token": auth_state.access_token,
-                        }
+                        },
                     }
                 )
             self._submitted.difference_update(removed)
@@ -226,7 +235,9 @@ class Websocket:
         added = current.difference(self._submitted)
         if added:
             topics_list = list(map(str, added))
-            ws_logger.debug(f"Websocket[{self._idx}]: Adding topics: {', '.join(topics_list)}")
+            ws_logger.debug(
+                f"Websocket[{self._idx}]: Adding topics: {', '.join(topics_list)}"
+            )
             for topics in chunk(topics_list, 20):
                 await self.send(
                     {
@@ -234,7 +245,7 @@ class Websocket:
                         "data": {
                             "topics": topics,
                             "auth_token": auth_state.access_token,
-                        }
+                        },
                     }
                 )
             self._submitted.update(added)
@@ -267,7 +278,9 @@ class Websocket:
                 )
                 raise WebsocketClosed()
             else:
-                ws_logger.error(f"Websocket[{self._idx}] error: Unknown message: {raw_message}")
+                ws_logger.error(
+                    f"Websocket[{self._idx}] error: Unknown message: {raw_message}"
+                )
 
     def _handle_message(self, message):
         # request the assigned topic to process the response
@@ -300,7 +313,9 @@ class Websocket:
                 ws_logger.warning(f"Websocket[{self._idx}] requested reconnect.")
                 self.request_reconnect()
             else:
-                ws_logger.warning(f"Websocket[{self._idx}] received unknown payload: {message}")
+                ws_logger.warning(
+                    f"Websocket[{self._idx}] received unknown payload: {message}"
+                )
 
     def add_topics(self, topics_set: set[WebsocketTopic]):
         changed: bool = False

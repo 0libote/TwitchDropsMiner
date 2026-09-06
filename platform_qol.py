@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import os
 import asyncio
+import os
 import subprocess
 import sys
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from constants import IS_PACKAGED, SELF_PATH
-
 
 AUTOSTART_NAME = "TwitchDropsMinerNext"
 
@@ -20,8 +19,7 @@ def set_windows_autostart(enabled: bool, *, tray: bool = True) -> None:
     import winreg
 
     command = (
-        f'"{SELF_PATH}"' if IS_PACKAGED
-        else f'"{sys.executable}" "{SELF_PATH}"'
+        f'"{SELF_PATH}"' if IS_PACKAGED else f'"{sys.executable}" "{SELF_PATH}"'
     ) + (" --tray" if tray else "")
     with winreg.OpenKey(
         winreg.HKEY_CURRENT_USER,
@@ -60,6 +58,7 @@ def open_path(path: Path) -> None:
 def show_startup_error(message: str) -> None:
     if sys.platform == "win32":
         import ctypes
+
         ctypes.windll.user32.MessageBoxW(None, message, "Twitch Drops Miner Next", 0x10)
 
 
@@ -75,17 +74,22 @@ class NativeTray:
             return
         import pystray
         from PIL import Image
+
         from constants import _resource_path
 
         loop = asyncio.get_running_loop()
         menu = pystray.Menu(
-            pystray.MenuItem("Open dashboard", lambda *_: webbrowser.open(self.url), default=True),
+            pystray.MenuItem(
+                "Open dashboard", lambda *_: webbrowser.open(self.url), default=True
+            ),
             pystray.MenuItem("Exit", lambda *_: loop.call_soon_threadsafe(self.close)),
         )
         self.images["pickaxe"] = Image.open(_resource_path("icons/pickaxe.ico"))
         self.icon = pystray.Icon(
-            "twitch_drops_miner_next", self.images["pickaxe"],
-            "Twitch Drops Miner Next", menu,
+            "twitch_drops_miner_next",
+            self.images["pickaxe"],
+            "Twitch Drops Miner Next",
+            menu,
         )
         self.icon.run_detached()
 
@@ -93,7 +97,9 @@ class NativeTray:
         if self.icon is None:
             return
         from PIL import Image
+
         from constants import _resource_path
+
         self.icon.title = title[:127]
         if icon not in self.images:
             self.images[icon] = Image.open(_resource_path(f"icons/{icon}.ico"))

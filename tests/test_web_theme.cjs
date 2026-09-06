@@ -1,4 +1,4 @@
-// Run with: node tests/test_web_theme.cjs (no browser or packages required).
+// Run with: bun tests/test_web_theme.cjs (no browser or packages required).
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');

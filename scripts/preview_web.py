@@ -3,6 +3,7 @@
 Run: python scripts/preview_web.py --port 8095
 The preview is read-only and only listens on localhost.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,14 +27,23 @@ class PreviewHandler(BaseHTTPRequestHandler):
                 query = parse_qs(urlsplit(self.path).query)
                 game = query.get("game", [""])[0]
                 search = query.get("q", [""])[0].casefold()
-                items = [row for row in payload["items"] if
-                         (not game or (row["gameId"] or "unknown") == game) and
-                         search in f'{row["name"]} {row["gameName"]} {row["campaignName"]}'.casefold()]
+                items = [
+                    row
+                    for row in payload["items"]
+                    if (not game or (row["gameId"] or "unknown") == game)
+                    and search
+                    in f"{row['name']} {row['gameName']} {row['campaignName']}".casefold()
+                ]
                 try:
                     offset = max(0, int(query.get("offset", ["0"])[0]))
                 except ValueError:
                     offset = 0
-                payload.update(items=items[offset:offset + 50], total=len(items), offset=offset, limit=50)
+                payload.update(
+                    items=items[offset : offset + 50],
+                    total=len(items),
+                    offset=offset,
+                    limit=50,
+                )
             data = json.dumps(payload).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -48,7 +58,9 @@ class PreviewHandler(BaseHTTPRequestHandler):
             self.end_headers()
             try:
                 payload = (ROOT / "tests/fixtures/web_state.json").read_text()
-                self.wfile.write(f"data: {json.dumps(json.loads(payload))}\n\n".encode())
+                self.wfile.write(
+                    f"data: {json.dumps(json.loads(payload))}\n\n".encode()
+                )
                 self.wfile.flush()
                 while True:
                     time.sleep(15)
@@ -57,11 +69,22 @@ class PreviewHandler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
-        assets = {"/assets/app.js": "text/javascript", "/assets/theme.js": "text/javascript", "/assets/app.css": "text/css"}
+        assets = {
+            "/assets/app.js": "text/javascript",
+            "/assets/theme.js": "text/javascript",
+            "/assets/app.css": "text/css",
+        }
         if path in assets:
             file = ROOT / "web" / path.rsplit("/", 1)[-1]
             content_type = assets[path]
-        elif path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics", "/history") or path.startswith("/campaigns/"):
+        elif path in (
+            "/",
+            "/campaigns",
+            "/mining",
+            "/settings",
+            "/diagnostics",
+            "/history",
+        ) or path.startswith("/campaigns/"):
             file = ROOT / "web/index.html"
             content_type = "text/html"
         else:
