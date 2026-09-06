@@ -62,8 +62,6 @@ jobs:
           load: true
           push: false
           tags: tdm-next:test
-          sbom: true
-          provenance: mode=max
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Smoke-test the running container
