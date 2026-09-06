@@ -1,6 +1,7 @@
 # Cache files
 __pycache__
 .mypy_cache
+.ruff_cache
 # Build and dist files
 /build
 /dist
@@ -30,5 +31,7 @@ settings.json
 .DS_Store
 *.app
 /node_modules/
+# Bun text lockfile (bun.lock) is committed; binary lock is generated locally
+bun.lockb
 /history.sqlite3*
 /stats.json

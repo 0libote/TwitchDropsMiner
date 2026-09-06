@@ -32,16 +32,16 @@ Open `http://127.0.0.1:8095`. The sample fixture uses game cover art for some re
 Existing checks:
 
 ```sh
-node tests/test_web_theme.cjs
+bun tests/test_web_theme.cjs
 python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-The browser regression suite uses pinned, development-only Playwright and its Chromium browser:
+The browser regression suite uses pinned, development-only Playwright and its Chromium browser (via Bun):
 
 ```sh
-npm ci
-npx playwright install chromium
-npm test
+bun install
+bunx --package playwright@1.62.1 playwright install --with-deps chromium # --with-deps for Linux deps
+bun run test
 ```
 
 Run the preview server first. `TDM_PREVIEW_URL` can override its URL; `CHROMIUM_PATH` can select an existing browser executable. The suite intercepts all API requests and injects sample events. It checks themes, focus during updates, save behavior, the game picker, search, reconnect/paused/empty states, missing artwork, authorization, and all seven routes at desktop, tablet and mobile widths. Desktop and mobile screenshots should also be reviewed when changing layout.

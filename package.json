@@ -1,8 +1,9 @@
 {
   "name": "twitch-drops-miner-browser-tests",
   "private": true,
+  "packageManager": "bun@1.4.2",
   "scripts": {
-    "test": "node tests/test_web_theme.cjs && node tests/test_web_ui.cjs"
+    "test": "bun tests/test_web_theme.cjs && bun tests/test_web_ui.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"

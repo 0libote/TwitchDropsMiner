@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import secrets
 import sys
 import json
 import random
@@ -120,7 +121,8 @@ CHARS_HEX_UPPER = string.digits + "ABCDEF"
 
 
 def create_nonce(chars: str, length: int) -> str:
-    return ''.join(random.choices(chars, k=length))
+    # secrets is used for Twitch nonces that become part of auth-adjacent values
+    return ''.join(secrets.choice(chars) for _ in range(length))
 
 
 def deduplicate(iterable: abc.Iterable[_T]) -> list[_T]:
@@ -331,6 +333,7 @@ class ExponentialBackoff:
         return self
 
     def __next__(self) -> float:
+        # random is intentional for jitter (ExponentialBackoff); not crypto - see create_nonce for secrets usage
         value: float = (
             pow(self.base, self.steps)
             * random.uniform(self.variance_min, self.variance_max)

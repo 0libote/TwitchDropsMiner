@@ -198,7 +198,7 @@ The modern path deliberately uses the dependencies already central to the miner:
 - PyInstaller for Windows and macOS artifacts.
 
 There is no frontend build, frontend framework, or second API server. SQLite ships with Python
-and needs no database service. Node and pinned Playwright are used only for browser tests.
+and needs no database service. Bun and pinned Playwright are used only for browser tests.
 
 Run the checks:
 
@@ -211,11 +211,11 @@ env/bin/python scripts/check_upstream.py --check
 Browser checks (also required by CI):
 
 ```bash
-npm ci
-npx playwright install chromium
+bun install
+bunx --package playwright@1.62.1 playwright install --with-deps chromium # --with-deps required on Linux
 env/bin/python scripts/preview_web.py
 # In another terminal:
-npm test
+bun run test
 ```
 
 The browser suite uses fictional fixtures and intercepts API actions; it never controls a live
