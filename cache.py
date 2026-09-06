@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import io
 import json
-from typing import Dict, TypedDict, NewType, TYPE_CHECKING
+from typing import TypedDict, NewType, TYPE_CHECKING
 
 from utils import json_load, json_save
 from constants import URLType, CACHE_PATH, CACHE_DB
@@ -17,7 +17,7 @@ from PIL.ImageTk import PhotoImage
 if TYPE_CHECKING:
     from gui import GUIManager
     from PIL.Image import Image
-    from typing_extensions import TypeAlias
+    from typing import TypeAlias
 
 
 ImageHash = NewType("ImageHash", str)
@@ -29,7 +29,7 @@ class ExpiringHash(TypedDict):
     expires: datetime
 
 
-Hashes = Dict[URLType, ExpiringHash]
+Hashes = dict[URLType, ExpiringHash]
 default_database: Hashes = {}
 
 
@@ -93,11 +93,14 @@ class ImageCache:
         return ImageHash(f"{int(bits, 2):x}.png")
 
     async def get(self, url: URLType, size: ImageSize | None = None) -> PhotoImage:
+        image: Image | None = None
+        img_hash: ImageHash | None = None
+        # Fast path: check cache with lock
         async with self._lock:
-            image: Image | None = None
             if url in self._hashes:
                 img_hash = self._hashes[url]["hash"]
                 self._hashes[url]["expires"] = self._new_expires()
+                self._altered = True
                 if img_hash in self._images:
                     image = self._images[img_hash]
                 else:
@@ -106,27 +109,47 @@ class ImageCache:
                         loaded.load()  # force full decode so broken data is caught here
                         self._images[img_hash] = image = loaded
                     except (FileNotFoundError, Image_module.UnidentifiedImageError, OSError):
-                        pass
-            if image is None:
-                try:
-                    async with self._twitch.request("GET", url) as response:
-                        if response.status != 404:
-                            image = Image_module.open(io.BytesIO(await response.read()))
-                except Exception:
+                        image = None
+                if image is not None:
+                    # Cache hit – no network needed
                     pass
-                if image is None:
-                    # use a blank white image as a fallback
-                    image = Image_module.new("RGB", (10, 10), (255, 255, 255))
-                img_hash = self._hash(image)
-                self._images[img_hash] = image
-                image.save(CACHE_PATH / img_hash)
-                self._hashes[url] = {
-                    "hash": img_hash,
-                    "expires": self._new_expires()
-                }
-        # NOTE: If self._hashes ever stops being updated in both above if cases,
-        # this will need to be moved
-        self._altered = True
+                else:
+                    # Cache entry references missing/broken file – drop and refetch
+                    self._hashes.pop(url, None)
+                    image = None
+                    img_hash = None
+        if image is None:
+            # Fetch outside the lock to avoid serializing all image downloads
+            try:
+                async with self._twitch.request("GET", url) as response:
+                    if response.status != 404:
+                        fetched = Image_module.open(io.BytesIO(await response.read()))
+                        fetched.load()
+                        image = fetched
+            except Exception:
+                pass
+            if image is None:
+                image = Image_module.new("RGB", (10, 10), (255, 255, 255))
+            img_hash = self._hash(image)
+            # Store under lock, re-checking for race
+            async with self._lock:
+                # Another coroutine may have filled the entry while we fetched
+                if url in self._hashes and self._hashes[url]["hash"] in self._images:
+                    existing_hash = self._hashes[url]["hash"]
+                    image = self._images[existing_hash]
+                    img_hash = existing_hash
+                    self._hashes[url]["expires"] = self._new_expires()
+                else:
+                    self._images[img_hash] = image
+                    try:
+                        image.save(CACHE_PATH / img_hash)
+                    except OSError:
+                        pass
+                    self._hashes[url] = {
+                        "hash": img_hash,
+                        "expires": self._new_expires()
+                    }
+                self._altered = True
         if size is None:
             size = image.size
         photo_key = (img_hash, size)

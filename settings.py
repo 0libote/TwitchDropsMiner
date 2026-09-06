@@ -78,12 +78,12 @@ class Settings:
     def __getattr__(self, name: str, /) -> Any:
         if name in self.PASSTHROUGH:
             # passthrough
-            return getattr(super(), name)
+            return super().__getattribute__(name)
         elif hasattr(self._args, name):
             return getattr(self._args, name)
         elif name in self._settings:
             return self._settings[name]  # type: ignore[literal-required]
-        return getattr(super(), name)
+        return super().__getattribute__(name)
 
     def __setattr__(self, name: str, value: Any, /) -> None:
         if name in self.PASSTHROUGH:

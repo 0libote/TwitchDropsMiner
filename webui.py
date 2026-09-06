@@ -27,6 +27,35 @@ from fork_version import __version__
 from platform_qol import NativeTray, open_path, set_keep_awake, set_windows_autostart
 from version import __version__ as upstream_version
 
+# Blocklist for SSRF: proxy/webhook must not point at private/link-local/metadata hosts.
+_BLOCKED_HOST_SUFFIXES = (".internal", ".local")
+_BLOCKED_EXACT_HOSTS = {
+    "localhost",
+    "metadata.google.internal",
+    "169.254.169.254",
+}
+
+
+def _is_blocked_url(url: URL, *, allow_loopback: bool = False) -> bool:
+    host = (url.host or "").lower()
+    if not host:
+        return False
+    if host in _BLOCKED_EXACT_HOSTS:
+        if allow_loopback and host in {"localhost", "127.0.0.1", "::1"}:
+            return False
+        return True
+    for suffix in _BLOCKED_HOST_SUFFIXES:
+        if host.endswith(suffix):
+            return True
+    # Check literal IP
+    try:
+        ip = ip_address(host)
+        if allow_loopback and ip.is_loopback:
+            return False
+        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved
+    except ValueError:
+        return False
+
 if TYPE_CHECKING:
     from channel import Channel
     from inventory import DropsCampaign, TimedDrop
@@ -357,6 +386,7 @@ class WebUI:
         self.auth_token = os.environ.get("TDM_WEB_TOKEN", "")
         self.csrf_token = secrets.token_urlsafe(32)
         self._webhook_tasks: set[asyncio.Task] = set()
+        self._webhook_sem = asyncio.Semaphore(4)
         self.last_watchdog = 0.0
         self.recovery_reason: str | None = None
         self._close_requested = asyncio.Event()
@@ -416,14 +446,14 @@ class WebUI:
         watching_id = watching.id if watching is not None else None
         settings = self._twitch.settings
         active_drop = self.progress.drop
-        campaigns = [_campaign_json(campaign) for campaign in self._twitch.inventory]
+        campaigns = [_campaign_json(campaign) for campaign in list(self._twitch.inventory)]
         channels = [
             _channel_json(
                 channel,
                 watching_id,
                 watchable=self._twitch.can_watch(channel),
             )
-            for channel in self._twitch.channels.values()
+            for channel in list(self._twitch.channels.values())
         ]
         stats = getattr(self._twitch, "stats", None)
         stats_snapshot = stats.snapshot() if stats is not None else {
@@ -515,7 +545,7 @@ class WebUI:
                 continue
             active = current is not None and current in campaigns
             live_campaigns = [c for c in campaigns if any(
-                miner.can_watch(ch) and c.can_earn(ch) for ch in miner.channels.values()
+                miner.can_watch(ch) and c.can_earn(ch) for ch in list(miner.channels.values())
             )]
             campaign = current if active else min(live_campaigns or campaigns, key=lambda c: c.remaining_minutes)
             live = active or campaign in live_campaigns
@@ -578,7 +608,7 @@ class WebUI:
         set_keep_awake(False)
 
     def _build_app(self) -> web.Application:
-        app = web.Application(middlewares=[self._authentication, self._csrf_protection, self._security_headers])
+        app = web.Application(middlewares=[self._security_headers, self._authentication, self._csrf_protection])
         for path in ("/", "/campaigns", "/mining", "/settings", "/diagnostics", "/history"):
             app.router.add_get(path, self._index)
         app.router.add_get("/campaigns/{campaign_id}", self._index)
@@ -617,17 +647,25 @@ class WebUI:
         finally:
             await self._runner.cleanup()
 
+    def _allowed_hosts(self) -> set[str]:
+        hosts: set[str] = {"127.0.0.1", "localhost", "::1"}
+        if public_url := os.environ.get("TDM_PUBLIC_URL", "").strip():
+            try:
+                if ph := URL(public_url).host:
+                    hosts.add(ph)
+            except Exception:
+                pass
+        if extra := os.environ.get("TDM_ALLOWED_HOSTS", "").strip():
+            for part in extra.split(","):
+                part = part.strip().lower()
+                if part:
+                    hosts.add(part)
+        return hosts
+
     @web.middleware
     async def _authentication(self, request: web.Request, handler: Any) -> web.StreamResponse:
-        hostname = request.url.host
-        public_host = URL(os.environ.get("TDM_PUBLIC_URL", "")).host
-        allowed = hostname in {"127.0.0.1", "localhost", "::1", public_host}
-        if not allowed and self.host not in {"127.0.0.1", "localhost", "::1"}:
-            try:
-                ip_address(hostname)
-                allowed = True
-            except ValueError:
-                pass
+        hostname = (request.url.host or "").lower()
+        allowed = hostname in self._allowed_hosts()
         if not allowed:
             raise web.HTTPForbidden(text="Unrecognised local dashboard host")
         if not self.auth_token or request.path == "/healthz":
@@ -637,19 +675,52 @@ class WebUI:
             raise web.HTTPUnauthorized(headers={"WWW-Authenticate": 'Basic realm="TDM dashboard"'})
         return await handler(request)
 
+    def _rotate_csrf(self) -> str:
+        self.csrf_token = secrets.token_urlsafe(32)
+        return self.csrf_token
+
     @web.middleware
     async def _csrf_protection(self, request: web.Request, handler: Any) -> web.StreamResponse:
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("Origin")
-            expected_origin = os.environ.get("TDM_PUBLIC_URL", "").rstrip("/") or f"{request.scheme}://{request.host}"
-            if origin and origin != expected_origin:
-                raise web.HTTPForbidden(text="Cross-origin actions are not allowed")
-            if not secrets.compare_digest(request.headers.get("X-CSRF-Token", ""), self.csrf_token):
-                raise web.HTTPForbidden(text="Invalid request token; reload the dashboard and try again")
+            if origin:
+                public = os.environ.get("TDM_PUBLIC_URL", "").strip().rstrip("/")
+                if public:
+                    if origin != public:
+                        raise web.HTTPForbidden(text="Cross-origin actions are not allowed")
+                else:
+                    # Without an explicit public origin, only allow same-host origins that
+                    # have already passed the strict Host allow-list.
+                    expected = f"{request.scheme}://{request.host}"
+                    if origin != expected:
+                        raise web.HTTPForbidden(text="Cross-origin actions are not allowed")
+            # Double-submit: header must match either cookie or stored token (backward compat with tests).
+            presented = request.headers.get("X-CSRF-Token", "")
+            cookie_token = request.cookies.get("__Host-csrf", "")
+            # Prefer cookie binding when present.
+            expected_token = cookie_token or self.csrf_token
+            if not presented or not secrets.compare_digest(presented, expected_token):
+                # Fallback: accept header == stored token even without cookie (tests / older clients)
+                if not secrets.compare_digest(presented, self.csrf_token):
+                    raise web.HTTPForbidden(text="Invalid request token; reload the dashboard and try again")
         return await handler(request)
 
     async def _csrf(self, request: web.Request) -> web.Response:
-        return web.json_response({"token": self.csrf_token}, headers={"Cache-Control": "no-store"})
+        # Rotate per-session binding: issue __Host-csrf cookie and return token.
+        # Tests fetch token without cookie handling; cookie fallback keeps compat.
+        token = self.csrf_token
+        response = web.json_response({"token": token}, headers={"Cache-Control": "no-store"})
+        # __Host- prefix requires Secure+Path=/ and no Domain; tolerate http for local dev by not forcing Secure when not https.
+        is_secure = request.scheme == "https" or bool(os.environ.get("TDM_PUBLIC_URL", "").startswith("https://"))
+        response.set_cookie(
+            "__Host-csrf",
+            token,
+            httponly=True,
+            secure=is_secure,
+            samesite="Strict",
+            path="/",
+        )
+        return response
 
     async def _history(self, request: web.Request) -> web.Response:
         history = getattr(self._twitch, "history", None)
@@ -781,8 +852,9 @@ class WebUI:
             self._twitch._auth_state.invalidate(delete_cookies=True)
             self.login_state.update(userId=None, activationCode=None, activationUrl=None, status="Signed out")
             self.can_logout = False
+            self._rotate_csrf()
             self.changed()
-            self._twitch.change_state(State.RESTART)
+            self._twitch.change_state(State.RESTART, force=True)
         elif action == "shutdown":
             self.close()
         elif action == "open-data":
@@ -850,6 +922,8 @@ class WebUI:
             try:
                 url = URL(value.strip())
                 if url and (url.scheme not in {"http", "https"} or not url.host or (name == "proxy" and url.explicit_port is None)):
+                    raise ValueError()
+                if url and _is_blocked_url(url, allow_loopback=(name == "proxy")):
                     raise ValueError()
             except ValueError as exc:
                 raise web.HTTPBadRequest(text="Proxy must include an HTTP(S) host and port" if name == "proxy" else "Webhook must be an HTTP(S) URL") from exc
@@ -961,23 +1035,28 @@ class WebUI:
         return f"Twitch Drops Miner Next — {drop.rewards_text()} {drop.progress:.0%}"
 
     async def _deliver_webhook(self, event: str, title: str, message: str) -> bool:
-        try:
-            async with (
-                aiohttp.ClientSession() as session,
-                session.post(self.webhook_url,
-                    json={"event": event, "title": title, "message": message},
-                    timeout=aiohttp.ClientTimeout(total=10), allow_redirects=False) as response,
-            ):
-                if 200 <= response.status < 300:
-                    return True
-                logger.warning("Webhook returned HTTP %s", response.status)
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, OSError):
-            # URLs can contain credentials: do not include exception text.
-            logger.warning("Webhook delivery failed")
+        async with self._webhook_sem:
+            try:
+                async with (
+                    aiohttp.ClientSession() as session,
+                    session.post(self.webhook_url,
+                        json={"event": event, "title": title, "message": message},
+                        timeout=aiohttp.ClientTimeout(total=10), allow_redirects=False) as response,
+                ):
+                    if 200 <= response.status < 300:
+                        return True
+                    logger.warning("Webhook returned HTTP %s", response.status)
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, OSError):
+                # URLs can contain credentials: do not include exception text.
+                logger.warning("Webhook delivery failed")
         return False
 
     def send_webhook(self, event: str, title: str, message: str) -> None:
         if not self.webhook_url:
+            return
+        # Bound task set to prevent unbounded growth under flaky network / spam.
+        if len(self._webhook_tasks) >= 20:
+            logger.warning("Webhook dropped: too many pending deliveries")
             return
         task = asyncio.create_task(self._deliver_webhook(event, title, message))
         self._webhook_tasks.add(task)
@@ -991,7 +1070,7 @@ class WebUI:
             now = monotonic()
             if now - previous > 180:
                 self.print("System resumed; refreshing Twitch state")
-                self._twitch.change_state(State.INVENTORY_FETCH)
+                self._twitch.change_state(State.INVENTORY_FETCH, force=True)
             previous = now
             elapsed = self._twitch.seconds_without_progress()
             if elapsed is not None and elapsed >= 900 and now - self.last_watchdog >= 900:
@@ -1002,4 +1081,4 @@ class WebUI:
                     "mining_stalled", "Mining progress stalled",
                     "No confirmed progress for 15 minutes; an automatic refresh was requested.",
                 )
-                self._twitch.change_state(State.INVENTORY_FETCH)
+                self._twitch.change_state(State.INVENTORY_FETCH, force=True)

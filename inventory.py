@@ -206,9 +206,11 @@ class BaseDrop:
             # the claiming operation has potentially failed
             return False
         data = response["data"]
+        if "errors" in response and response["errors"]:
+            return False
         if "errors" in data and data["errors"]:
             return False
-        elif "claimDropRewards" in data:
+        if "claimDropRewards" in data:
             if not data["claimDropRewards"]:
                 return False
             elif (

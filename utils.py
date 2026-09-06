@@ -19,7 +19,8 @@ from contextlib import suppress
 from functools import cached_property
 from datetime import datetime, timezone
 from collections import abc, OrderedDict
-from typing import TYPE_CHECKING, Any, Literal, Callable, Generic, Mapping, TypeVar, ParamSpec, cast
+from typing import TYPE_CHECKING, Any, Literal, Generic, TypeVar, ParamSpec, cast
+from collections.abc import Callable, Mapping
 
 from yarl import URL
 
@@ -75,25 +76,55 @@ def format_traceback(exc: BaseException, **kwargs: Any) -> str:
 
 
 def lock_file(path: Path) -> tuple[bool, io.TextIOWrapper]:
-    file = path.open('w', encoding="utf8")
-    file.write('ツ')
-    file.flush()
+    # Use 'a+' to avoid truncating before acquiring the lock (TOCTOU).
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.touch(exist_ok=True)
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+    except OSError:
+        pass
+    file = path.open('a+', encoding="utf8")
     if sys.platform == "win32":
         import msvcrt
+
         try:
-            # we need to lock at least one byte for this to work
-            msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, max(path.stat().st_size, 1))
+            # lock at least one byte
+            msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
         except Exception:
             return False, file
+        file.seek(0)
+        file.truncate()
+        file.write('ツ')
+        file.flush()
+        try:
+            os.fsync(file.fileno())
+        except OSError:
+            pass
         return True, file
     if sys.platform in ("linux", "darwin"):
         import fcntl
+
         try:
             fcntl.lockf(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except Exception:
             return False, file
+        file.seek(0)
+        file.truncate()
+        file.write('ツ')
+        file.flush()
+        try:
+            os.fsync(file.fileno())
+        except OSError:
+            pass
         return True, file
     # for unsupported systems, just always return True
+    file.seek(0)
+    file.truncate()
+    file.write('ツ')
+    file.flush()
     return True, file
 
 
@@ -148,7 +179,7 @@ def task_wrapper(
                     # there isn't an easy and sure way to obtain the Twitch instance here,
                     # but we can improvise finding it
                     from twitch import Twitch  # cyclic import
-                    probe = args and args[0] or None  # extract from 'self' arg
+                    probe = args[0] if args else None  # extract from 'self' arg
                     if isinstance(probe, Twitch):
                         probe.close()
                     elif probe is not None:

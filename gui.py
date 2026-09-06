@@ -18,7 +18,7 @@ from tkinter.font import Font, nametofont
 from functools import partial, cached_property
 from datetime import datetime, timedelta, timezone
 from tkinter import Tk, ttk, StringVar, DoubleVar, IntVar
-from typing import Any, Union, Tuple, TypedDict, NoReturn, Generic, TYPE_CHECKING
+from typing import Any, Union, TypedDict, NoReturn, Generic, TYPE_CHECKING
 
 import pystray
 from yarl import URL
@@ -62,7 +62,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("TwitchDrops")
-TK_PADDING = Union[int, Tuple[int, int], Tuple[int, int, int], Tuple[int, int, int, int]]
+TK_PADDING = Union[int, tuple[int, int], tuple[int, int, int], tuple[int, int, int, int]]
 DIGITS = ceil(log10(WS_TOPICS_LIMIT))
 
 

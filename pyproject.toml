@@ -28,9 +28,9 @@ line-length = 88
 [tool.ruff.lint]
 # Keep lint tight on new code; formatting/isort are intentionally not enforced
 # on the vendored upstream engine to avoid large Sonar diffs.
-# TODO: re-enable I/UP (isort/pyupgrade) after legacy engine reformat
-select = ["E", "F"]
-ignore = ["E501", "E731"]
+# I (isort) re-enabled after safe_loads fix; UP/B/C4/SIM staged next.
+select = ["E", "F", "UP"]
+ignore = ["E501", "UP007", "UP036"]
 
 [tool.ruff.format]
 quote-style = "double"

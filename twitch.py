@@ -77,12 +77,20 @@ class SkipExtraJsonDecoder(json.JSONDecoder):
         return obj
 
 
-SAFE_LOADS = lambda s: json.loads(s, cls=SkipExtraJsonDecoder)
+def _safe_loads(s: str):
+    return json.loads(s, cls=SkipExtraJsonDecoder)
+
+
+SAFE_LOADS = _safe_loads
 
 
 def _save_authenticated_cookies(cookie_jar: aiohttp.CookieJar, client_url: URL) -> None:
     if "auth-token" in cookie_jar.filter_cookies(client_url):
         cookie_jar.save(COOKIES_PATH)
+        try:
+            COOKIES_PATH.chmod(0o600)
+        except OSError:
+            pass
 
 
 class _AuthState:
@@ -525,7 +533,7 @@ class Twitch:
         return self._session
 
     async def shutdown(self, *, restart: bool = False) -> None:
-        start_time = time()
+        start_time = monotonic()
         if not restart and self.history is not None:
             try:
                 self.history.close()
@@ -561,8 +569,8 @@ class Twitch:
         self.wanted_games.clear()
         self._mnt_triggers.clear()
         # wait at least half a second + whatever it takes to complete the closing
-        # this allows aiohttp to safely close the session
-        await asyncio.sleep(start_time + 0.5 - time())
+        # this allows aiohttp to safely close the session (monotonic avoids NTP skew)
+        await asyncio.sleep(max(0, start_time + 0.5 - monotonic()))
 
     def wait_until_login(self) -> abc.Coroutine[Any, Any, Literal[True]]:
         return self._auth_state._logged_in.wait()
@@ -605,9 +613,10 @@ class Twitch:
         if drop.real_current_minutes > previous:
             self.last_confirmed_progress_at = monotonic()
 
-    def change_state(self, state: State) -> None:
+    def change_state(self, state: State, *, force: bool = False) -> None:
         # Background maintenance and websocket events must preserve the user's pause.
-        if self.paused and state not in (State.IDLE, State.RESTART, State.EXIT):
+        # Watchdog and explicit user actions may bypass with force=True.
+        if self.paused and not force and state not in (State.IDLE, State.RESTART, State.EXIT):
             return
         if self._state is not State.EXIT:
             # prevent state changing once we switch to exit state
@@ -742,8 +751,7 @@ class Twitch:
                 priority_mode = self.settings.priority_mode
                 priority_only = priority_mode is PriorityMode.PRIORITY_ONLY
                 next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
-                # sorted_campaigns: list[DropsCampaign] = list(self.inventory)
-                sorted_campaigns: list[DropsCampaign] = self.inventory
+                sorted_campaigns: list[DropsCampaign] = list(self.inventory)
                 if not priority_only:
                     if priority_mode is PriorityMode.ENDING_SOONEST:
                         sorted_campaigns.sort(key=lambda c: c.ends_at)
@@ -836,10 +844,16 @@ class Twitch:
                 await self.bulk_check_online(acl_channels)
                 # finally, add them as new channels
                 new_channels.update(acl_channels)
-                for game in no_acl:
-                    # for every campaign without an ACL, for it's game,
-                    # add a list of live channels with drops enabled
-                    new_channels.update(await self.get_live_streams(game, drops_enabled=True))
+                if no_acl:
+                    # Fan-out live directory fetches concurrently (bounded) to cut fetch time.
+                    sem = asyncio.Semaphore(6)
+
+                    async def _fetch_game(game: Game):
+                        async with sem:
+                            return await self.get_live_streams(game, drops_enabled=True)
+
+                    for chans in await asyncio.gather(*(_fetch_game(g) for g in no_acl)):
+                        new_channels.update(chans)
                 # sort them descending by viewers, by priority and by game priority
                 # NOTE: Viewers sort also ensures ONLINE channels are sorted to the top
                 # NOTE: We can drop using the set now, because there's no more channels being added
@@ -1337,7 +1351,9 @@ class Twitch:
         method = method.upper()
         if self.settings.proxy and "proxy" not in kwargs:
             kwargs["proxy"] = self.settings.proxy
-        logger.debug(f"Request: ({method=}, {url=}, {kwargs=})")
+        # Never log proxy URLs (may contain credentials) or other sensitive kwargs.
+        _kwargs_log = {k: "***" if k in {"proxy", "Authorization", "auth"} else v for k, v in kwargs.items()}
+        logger.debug(f"Request: ({method=}, {url=}, {_kwargs_log=})")
         session_timeout = timedelta(seconds=session.timeout.total or 0)
         backoff = ExponentialBackoff(maximum=3*60)
         for delay in backoff:
@@ -1552,7 +1568,12 @@ class Twitch:
                 del inventory_data[campaign_id]
 
         if self.settings.dump:
-            # dump the campaigns data to the dump file
+            # dump the campaigns data to the dump file (bounded ~5MB, rotate on overflow)
+            try:
+                if DUMP_PATH.exists() and DUMP_PATH.stat().st_size > 5 * 1024 * 1024:
+                    DUMP_PATH.unlink(missing_ok=True)
+            except OSError:
+                pass
             with open(DUMP_PATH, 'a', encoding="utf8") as file:
                 # we need to pre-process the inventory dump a little
                 dump_data: JsonType = deepcopy(inventory_data)

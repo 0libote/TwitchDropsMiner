@@ -97,7 +97,7 @@ class WatchdogTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stalled_progress_refreshes_once_during_cooldown(self) -> None:
         ui, miner = await self.run_ticks(1000)
-        miner.change_state.assert_called_once_with(State.INVENTORY_FETCH)
+        miner.change_state.assert_called_once_with(State.INVENTORY_FETCH, force=True)
         ui.send_webhook.assert_called_once()
 
     async def test_paused_or_not_watching_does_not_trigger_watchdog(self) -> None:

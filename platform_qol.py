@@ -6,7 +6,7 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from constants import IS_PACKAGED, SELF_PATH
 
