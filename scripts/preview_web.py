@@ -94,4 +94,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # Loopback-only preview server; no TLS is expected here. NOSONAR(S5332)
     print(f"Read-only dashboard preview: http://127.0.0.1:{args.port}", flush=True)  # NOSONAR
-    ThreadingHTTPServer(("127.0.0.1", args.port), PreviewHandler).serve_forever()
+    # Loopback-only preview server; plain HTTP is intentional here. NOSONAR(S5332)
+    ThreadingHTTPServer(("127.0.0.1", args.port), PreviewHandler).serve_forever()  # NOSONAR

@@ -12,7 +12,7 @@ function load(saved, dark, blocked = false) {
     localStorage: {getItem() { if (blocked) throw Error('Storage blocked'); return saved; }},
     matchMedia: () => media,
   });
-  vm.runInContext(source, context);
+  vm.runInContext(source, context); // NOSONAR(S1523): runs the project's own theme.js in a test sandbox
   return {root, meta, media};
 }
 for (const theme of ['graphite', 'paper', 'midnight', 'evergreen']) {
