@@ -33,5 +33,6 @@ settings.json
 /node_modules/
 # Bun text lockfile (bun.lock) is committed; binary lock is generated locally
 bun.lockb
+/web/dist/
 /history.sqlite3*
 /stats.json

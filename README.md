@@ -197,8 +197,11 @@ The modern path deliberately uses the dependencies already central to the miner:
 - Plain HTML, CSS, and JavaScript with server-sent events for the UI.
 - PyInstaller for Windows and macOS artifacts.
 
-There is no frontend build, frontend framework, or second API server. SQLite ships with Python
-and needs no database service. Bun and pinned Playwright are used only for browser tests.
+There is no frontend framework or second API server. SQLite ships with Python
+and needs no database service. Bun (pinned in `package.json:packageManager`) is the
+frontend toolchain: package manager, `bun:test` unit runner, `Bun.build` bundler
+check, `Bun.serve` preview server, and Playwright browser tests. The Python engine
+and `aiohttp` dashboard server remain authoritative at runtime.
 
 Run the checks:
 
@@ -206,6 +209,10 @@ Run the checks:
 env/bin/python -m unittest discover -s tests -v
 env/bin/python -m compileall -q .
 env/bin/python scripts/check_upstream.py --check
+bun run typecheck   # tsc --noEmit over web/api-types.ts, scripts, tests
+bun run build       # Bun.build bundle check (output is gitignored web/dist/)
+bun test            # Bun-native unit tests (tests/*.test.ts)
+bun audit           # JS supply-chain audit (also run in CI)
 ```
 
 Browser checks (also required by CI):
@@ -217,6 +224,18 @@ env/bin/python scripts/preview_web.py
 # In another terminal:
 bun run test
 ```
+
+For UI-only work without Python, the Bun preview is interchangeable (same fixtures,
+same read-only 409 behavior, same SSE shape):
+
+```bash
+bun run preview                 # Bun.serve on :8095
+# In another terminal:
+bun run test:browser
+```
+
+`web/api-types.ts` mirrors `WebUI.snapshot()` in `webui.py`; keep them in sync when
+the dashboard contract changes so `tsc` catches fixture drift.
 
 The browser suite uses fictional fixtures and intercepts API actions; it never controls a live
 miner. Python tests exercise the real request validation and persistence against temporary data.
