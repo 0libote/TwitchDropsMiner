@@ -26,7 +26,7 @@ parity; `src/` modules are developed and tested side-by-side.
 | `history.py` | `src/history.ts` | ✅ done | Same schema/SQL; engine objects are structural interfaces for now |
 | `constants.py` (GQL queries, topics, limits) | `src/twitchProtocol.ts` | ✅ done | All 15 query hashes/structures and agent lists verified against Python |
 | `settings.py` | `src/settings.ts` | ✅ done | Same defaults/merge/CLI-overlay; reads Python-written `settings.json` |
-| `channel.py`, `inventory.py` (models) | `src/models.ts` | phase 2 | Needs GQL response typing |
+| `channel.py`, `inventory.py` (models) | `src/models.ts` (+`utils.ts`, `errors.ts`) | ✅ done | 29 tests; `EngineLike` interface stands in for the engine |
 | `websocket.py` | `src/websocket.ts` | phase 2 | Bun native WebSocket client |
 | `twitch.py` (engine) | `src/engine.ts` | phase 2 | The big one: state machine, GQL, watch loop |
 | `webui.py` (dashboard server) | `src/server.ts` | phase 2 | `Bun.serve()` routes + SSE; serve `web/` |
