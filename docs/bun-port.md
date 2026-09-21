@@ -27,7 +27,8 @@ parity; `src/` modules are developed and tested side-by-side.
 | `constants.py` (GQL queries, topics, limits) | `src/twitchProtocol.ts` | ✅ done | All 15 query hashes/structures and agent lists verified against Python |
 | `settings.py` | `src/settings.ts` | ✅ done | Same defaults/merge/CLI-overlay; reads Python-written `settings.json` |
 | `channel.py`, `inventory.py` (models) | `src/models.ts` (+`utils.ts`, `errors.ts`) | ✅ done | 29 tests; `EngineLike` interface stands in for the engine |
-| `websocket.py` | `src/websocket.ts` | phase 2 | Bun native WebSocket client |
+| `utils.py` async (`AwaitableValue`, `chunk`, `create_nonce`) | `src/async.ts` | ✅ done | `RateLimiter` moves with the engine |
+| `websocket.py` | `src/websocket.ts` | ✅ done | Bun-native sockets; same backoff/ping/topic/pool rules, tested live |
 | `twitch.py` (engine) | `src/engine.ts` | phase 2 | The big one: state machine, GQL, watch loop |
 | `webui.py` (dashboard server) | `src/server.ts` | phase 2 | `Bun.serve()` routes + SSE; serve `web/` |
 | `main.py` (CLI/lifecycle) | `src/main.ts` | phase 3 | Args, signals, lock file |
