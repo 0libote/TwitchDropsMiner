@@ -14,7 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ruff==0.16.6",  # keep in sync with ci.yml pip install
+    "ruff==0.16.8",  # keep in sync with ci.yml pip install
 ]
 desktop = [
     # Windows system tray; imported lazily by platform_qol.
