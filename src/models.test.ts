@@ -54,7 +54,9 @@ function makeEngine(): EngineLike & {
       displayDrop: (d: unknown, o: unknown) => void calls.push({ method: "displayDrop", args: [d, o] }),
       notifier: {
         notify: (message: string, title: string) => void (notified.push({ message, title }), calls.push({ method: "notify", args: [message, title] })),
+        set_activity: (state: string) => void calls.push({ method: "set_activity", args: [state] }),
       },
+      clearDrop: () => void calls.push({ method: "clearDrop", args: [] }),
     },
     translate: (section: string, key: string, sub?: string) => (sub ? `${section}.${key}.${sub}` : `${section}.${key}`),
     print: (m: string) => void printed.push(m),

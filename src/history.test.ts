@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 function benefit(id: string) {
-  return { id, name: "Reward", image_url: "https://example.test/a.png" };
+  return { id, name: "Reward", imageUrl: "https://example.test/a.png" };
 }
 
 function campaign(): HistoryCampaign {
@@ -46,8 +46,8 @@ function campaign(): HistoryCampaign {
     name: "Drop",
     campaign,
     benefits: [benefit("b")],
-    starts_at: new Date("2024-01-01T00:00:00Z"),
-    ends_at: new Date("2024-02-01T00:00:00Z"),
+    startsAt: new Date("2024-01-01T00:00:00Z"),
+    endsAt: new Date("2024-02-01T00:00:00Z"),
   };
   campaign.drops = [drop];
   return campaign;

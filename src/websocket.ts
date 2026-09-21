@@ -44,7 +44,7 @@ export interface WsEngine {
   info(message: string): void;
   warn(message: string): void;
   error(message: string): void;
-  waitUntilLogin(): Promise<void>;
+  waitUntilLogin(): Promise<true>;
   getAuthToken(): Promise<string>;
   close(): void;
 }

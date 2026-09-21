@@ -40,7 +40,7 @@ function makeEngine(): WsEngine & {
     info: (m: string) => void logs.push(`info:${m}`),
     warn: (m: string) => void logs.push(`warn:${m}`),
     error: (m: string) => void logs.push(`error:${m}`),
-    waitUntilLogin: async (): Promise<void> => {},
+    waitUntilLogin: async (): Promise<true> => true,
     getAuthToken: async () => {
       engine.tokens.push("tok");
       return "tok";

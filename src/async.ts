@@ -37,6 +37,26 @@ export class AsyncEvent {
     });
     return true;
   }
+
+  /**
+   * Cancellable wait: call `cancel()` to drop the waiter (prevents waiter
+   * accumulation for listeners that only care about shutdown races).
+   */
+  waitHandle(): { promise: Promise<true>; cancel(): void } {
+    if (this.setFlag) return { promise: Promise.resolve(true), cancel: () => {} };
+    let wake!: () => void;
+    const promise = new Promise<true>((resolve) => {
+      wake = () => resolve(true);
+    });
+    this.waiters.push(wake);
+    return {
+      promise,
+      cancel: () => {
+        const index = this.waiters.indexOf(wake);
+        if (index >= 0) this.waiters.splice(index, 1);
+      },
+    };
+  }
 }
 
 /** A value that arrives later (port of `AwaitableValue`). */
@@ -117,4 +137,77 @@ export class TaskAbort extends Error {
 /** `traceback.format_exception` equivalent for error logs. */
 export function formatTraceback(error: unknown): string {
   return error instanceof Error ? (error.stack ?? String(error)) : String(error);
+}
+
+/** Interruptible sleep (port of the `wait_for(..., timeout=...)` idiom). */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    // Never hold the process open: production stays alive via the server,
+    // and tests must exit even with hour-long maintenance sleeps pending.
+    (timer as unknown as { unref?: () => void }).unref?.();
+  });
+}
+
+/**
+ * Totalling rate limiter (port of `utils.RateLimiter`): at most `capacity`
+ * acquisitions per `windowSeconds`; concurrent holders count too.
+ */
+export class RateLimiter {
+  private total = 0;
+  private concurrent = 0;
+  private resetTimer: ReturnType<typeof setTimeout> | null = null;
+  private waiters: Array<() => void> = [];
+
+  constructor(
+    private readonly capacity: number,
+    private readonly windowSeconds: number,
+  ) {}
+
+  private canProceed(): boolean {
+    return Math.max(this.total, this.concurrent) < this.capacity;
+  }
+
+  private pump(): void {
+    const waiters = this.waiters;
+    this.waiters = [];
+    for (const wake of waiters) wake();
+  }
+
+  private reset(): void {
+    this.resetTimer = null;
+    this.total = 0;
+    this.pump();
+  }
+
+  async acquire(): Promise<() => void> {
+    while (!this.canProceed()) {
+      await new Promise<void>((resolve) => {
+        this.waiters.push(resolve);
+      });
+    }
+    this.total += 1;
+    this.concurrent += 1;
+    if (this.resetTimer === null) {
+      this.resetTimer = setTimeout(() => this.reset(), this.windowSeconds * 1000);
+      (this.resetTimer as unknown as { unref?: () => void }).unref?.();
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.concurrent -= 1;
+      this.pump();
+    };
+  }
+
+  /** Run `fn` under the limit, mirroring `async with limiter:`. */
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    const release = await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
 }

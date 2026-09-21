@@ -32,7 +32,7 @@ export interface HistoryGame {
 export interface HistoryBenefit {
   id: number | string;
   name: string;
-  image_url: unknown;
+  imageUrl: unknown;
 }
 
 export interface HistoryDrop {
@@ -40,8 +40,8 @@ export interface HistoryDrop {
   name: string;
   campaign: HistoryCampaign;
   benefits: HistoryBenefit[];
-  starts_at: Date;
-  ends_at: Date;
+  startsAt: Date;
+  endsAt: Date;
 }
 
 export interface HistoryCampaign {
@@ -286,14 +286,14 @@ export class History {
         const inWindow = candidates.filter(
           ({ drop }) =>
             !Number.isNaN(awardedTime) &&
-            drop.starts_at.getTime() <= awardedTime &&
-            awardedTime < drop.ends_at.getTime(),
+            drop.startsAt.getTime() <= awardedTime &&
+            awardedTime < drop.endsAt.getTime(),
         );
         if (inWindow.length !== 1) continue;
         const match = inWindow[0]!;
         const params: Bindings = [
           match.benefit.name,
-          String(match.benefit.image_url),
+          String(match.benefit.imageUrl),
           String(match.campaign.game.id),
           match.campaign.game.name,
           match.campaign.id,
@@ -332,7 +332,7 @@ export class History {
       for (const benefit of drop.benefits) {
         this.reward(String(userId), String(benefit.id), {
           name: benefit.name,
-          image: String(benefit.image_url),
+          image: String(benefit.imageUrl),
           gameId: String(campaign.game.id),
           gameName: campaign.game.name,
           source: "local",

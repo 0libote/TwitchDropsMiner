@@ -36,7 +36,9 @@ export interface EngineGui {
   displayDrop(drop: TimedDrop, options?: { countdown?: boolean; subone?: boolean }): void;
   notifier: {
     notify(message: string, title: string): void;
+    set_activity(state: string): void;
   };
+  clearDrop(): void;
 }
 
 export interface EngineStats {
@@ -877,6 +879,7 @@ export class Channel {
           await this.updateStream();
         })();
       }, INTERVALS.onlineDelay);
+      (this.pendingTimer as unknown as { unref?: () => void }).unref?.();
       this.display();
     }
   }

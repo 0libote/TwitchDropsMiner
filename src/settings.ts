@@ -115,6 +115,42 @@ export class Settings {
     return { ...this.file, exclude: new Set(this.file.exclude), priority: [...this.file.priority] };
   }
 
+  // Property access mirrors Python attribute reads (`settings.proxy`).
+  // The engine's models use these; generic access stays on get()/set().
+  get proxy(): string {
+    return this.file.proxy;
+  }
+  get language(): string {
+    return this.file.language;
+  }
+  get dark_mode(): boolean {
+    return this.file.dark_mode;
+  }
+  get exclude(): Set<string> {
+    return this.file.exclude;
+  }
+  get priority(): string[] {
+    return this.file.priority;
+  }
+  get connection_quality(): number {
+    return this.file.connection_quality;
+  }
+  get tray_notifications(): boolean {
+    return this.file.tray_notifications;
+  }
+  get enable_badges_emotes(): boolean {
+    return this.file.enable_badges_emotes;
+  }
+  get available_drops_check(): boolean {
+    return this.file.available_drops_check;
+  }
+  get priority_mode(): PriorityMode {
+    return this.file.priority_mode;
+  }
+  get webhook_url(): string {
+    return this.file.webhook_url;
+  }
+
   save(force = false): void {
     if (this.altered || force) {
       jsonSave(this.dataPath, toStorageForm(this.file), true);
