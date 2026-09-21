@@ -103,11 +103,15 @@ function parseIpv4(host: string): IpFlags | null {
   return ipv4Flags(parts);
 }
 
+/** WHATWG keeps IPv6 brackets in `hostname`; yarl (Python reference) strips them. */
+export function normalizeHostname(hostname: string | null | undefined): string {
+  const raw = (hostname ?? "").trim().toLowerCase();
+  return raw.startsWith("[") && raw.endsWith("]") ? raw.slice(1, -1) : raw;
+}
+
 /** Conservative port of `_is_blocked_url` (superset: blocks more, never less, for the tested ranges). */
 export function isBlockedUrl(url: URL, allowLoopback = false): boolean {
-  // WHATWG keeps IPv6 brackets in hostname; yarl strips them. Normalize.
-  const raw = (url.hostname || "").toLowerCase();
-  const host = raw.startsWith("[") && raw.endsWith("]") ? raw.slice(1, -1) : raw;
+  const host = normalizeHostname(url.hostname);
   if (!host) return false;
   if (BLOCKED_EXACT.has(host)) {
     if (allowLoopback && (host === "localhost" || host === "127.0.0.1" || host === "::1")) return false;
@@ -726,21 +730,21 @@ export class DashboardServer implements TwitchGui {
     const publicUrl = (process.env["TDM_PUBLIC_URL"] ?? "").trim();
     if (publicUrl) {
       try {
-        const host = new URL(publicUrl).hostname;
+        const host = normalizeHostname(new URL(publicUrl).hostname);
         if (host) hosts.add(host);
       } catch {
         // Ignore malformed public URLs (same as Python).
       }
     }
     for (const part of (process.env["TDM_ALLOWED_HOSTS"] ?? "").split(",")) {
-      const host = part.trim().toLowerCase();
+      const host = normalizeHostname(part);
       if (host) hosts.add(host);
     }
     return hosts;
   }
 
   private checkAuth(req: Request, url: URL): Response | null {
-    const hostname = (url.hostname || "").toLowerCase();
+    const hostname = normalizeHostname(url.hostname);
     if (!this.allowedHosts().has(hostname)) {
       return plain(403, "Unrecognised local dashboard host");
     }

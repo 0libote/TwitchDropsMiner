@@ -245,6 +245,12 @@ describe("auth, CSRF and host rules", () => {
     expect(response.status).toBe(403);
   });
 
+  test("IPv6 loopback is accepted despite WHATWG brackets in hostname", async () => {
+    const { server } = makeHarness();
+    const response = await server.handleRequest(new Request("http://[::1]/healthz"));
+    expect(response.status).toBe(200);
+  });
+
   test("writes require a CSRF token", async () => {
     const { server, engine } = makeHarness();
     expect((await write(server, "/api/actions/pause", "POST", {}, "")).status).toBe(403);
