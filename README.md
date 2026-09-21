@@ -11,7 +11,7 @@ and Docker.
 
 The project keeps upstream's low-bandwidth Twitch Drops engine and replaces the desktop-only
 Tkinter experience with one responsive dashboard. Desktop builds open it locally; Docker serves
-the same UI. The original UI remains available during the transition with `--legacy-ui`.
+the same UI.
 
 ## Current status
 
@@ -68,7 +68,6 @@ Useful options:
 --port PORT          Dashboard port; defaults to 8080
 --no-browser         Do not launch a browser automatically
 --tray               Start minimized with a Windows system-tray icon
---legacy-ui          Run the original Tkinter interface
 --log                Write log.txt in the data directory
 ```
 

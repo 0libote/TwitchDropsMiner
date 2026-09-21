@@ -9,7 +9,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BASE_FILE = ROOT / ".upstream-base"
 BACKEND_FILES = {
-    "cache.py",
     "channel.py",
     "constants.py",
     "exceptions.py",

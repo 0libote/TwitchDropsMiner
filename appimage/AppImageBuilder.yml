@@ -18,10 +18,11 @@ script:
   - make -j$(nproc)
   - make install-strip
 
-  # Package the app.
+  # Package the app. The dashboard (web/) must ship beside the Python sources because
+  # webui.WEB_ROOT resolves relative to webui.py.
   - mkdir -p "$TARGET_APPDIR"/usr/{src,share/icons/hicolor/128x128/apps}
-  - cp -r "$SOURCE_DIR/../lang" "$SOURCE_DIR/../icons" "$SOURCE_DIR"/../*.py "$TARGET_APPDIR/usr/src"
-  - cp "$SOURCE_DIR/pickaxe.png" "$TARGET_APPDIR/usr/share/icons/hicolor/128x128/apps/io.github.devilxd.twitchdropsminer.png"
+  - cp -r "$SOURCE_DIR/../lang" "$SOURCE_DIR/../icons" "$SOURCE_DIR/../web" "$SOURCE_DIR"/../*.py "$TARGET_APPDIR/usr/src"
+  - cp "$SOURCE_DIR/pickaxe.png" "$TARGET_APPDIR/usr/share/icons/hicolor/128x128/apps/dev.0libote.tdmnext.png"
 
   # Create a virtual environment and install up-to-date versions of meson and ninja.
   - python3 -m venv env && ./env/bin/python3 -m pip install meson ninja
@@ -35,9 +36,9 @@ script:
 
 AppDir:
   app_info:
-    id: io.github.devilxd.twitchdropsminer
-    name: Twitch Drops Miner
-    icon: io.github.devilxd.twitchdropsminer
+    id: dev.0libote.tdmnext
+    name: Twitch Drops Miner Next
+    icon: dev.0libote.tdmnext
     version: '{{APP_VERSION}}'
     exec: usr/bin/python3
     exec_args: '${APPDIR}/usr/src/main.py $@'
@@ -56,7 +57,6 @@ AppDir:
 
     include:
       - gir1.2-ayatanaappindicator3-0.1
-      - python3-tk
 
     exclude:
       - adwaita-icon-theme
@@ -150,7 +150,7 @@ AppDir:
     env:
       PATH: '${APPDIR}/usr/bin:${PATH}'
       PYTHONHOME: '${APPDIR}/usr'
-      PYTHONPATH: '${APPDIR}/usr/lib/python3.10/tkinter:${APPDIR}/usr/lib/python3.10/site-packages'
+      PYTHONPATH: '${APPDIR}/usr/lib/python3.11/site-packages'
       APPDIR_LIBRARY_PATH: '${APPDIR}/usr/lib:${APPDIR}/usr/lib/{{ARCH}}-linux-gnu:${APPDIR}/lib/{{ARCH}}-linux-gnu'
       TCL_LIBRARY: '${APPDIR}/usr/share/tcltk/tcl8.6'
       TK_LIBRARY: '${APPDIR}/usr/lib/tcltk/{{ARCH}}-linux-gnu/tk8.6'

@@ -18,7 +18,6 @@ from constants import CALL, GQL_QUERIES, ONLINE_DELAY, URLType, GQLQuery
 
 if TYPE_CHECKING:
     from twitch import Twitch
-    from gui import ChannelList
     from constants import JsonType, GQLPersistedQuery
 
 
@@ -174,7 +173,7 @@ class Channel:
         acl_based: bool = False,
     ):
         self._twitch: Twitch = twitch
-        self._gui_channels: ChannelList = twitch.gui.channels
+        self._gui_channels = twitch.gui.channels
         self.id: int = int(id)
         self._login: str = login
         self._display_name: str | None = display_name

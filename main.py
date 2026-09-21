@@ -27,7 +27,7 @@ if __name__ == "__main__":
         pass
 
     from constants import FILE_FORMATTER, LOCK_PATH, LOGGING_LEVELS, LOG_PATH, SELF_PATH
-    from exceptions import CaptchaRequired
+    from exceptions import CaptchaRequired, LoginException
     from settings import Settings
     from translate import _
     from twitch import Twitch
@@ -48,7 +48,6 @@ if __name__ == "__main__":
         log: bool
         tray: bool
         dump: bool
-        legacy_ui: bool
         host: str
         port: int
         no_browser: bool
@@ -90,11 +89,6 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dump", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--tray", action="store_true", help="start minimized with a tray icon")
-    parser.add_argument(
-        "--legacy-ui",
-        action="store_true",
-        help="use the original Tkinter interface",
-    )
     parser.add_argument(
         "--host",
         default=os.environ.get("TDM_HOST", "127.0.0.1"),
@@ -144,15 +138,13 @@ if __name__ == "__main__":
         logging.getLogger("TwitchDrops.gql").setLevel(settings.debug_gql)
         logging.getLogger("TwitchDrops.websocket").setLevel(settings.debug_ws)
 
-        ui_factory = None
-        if not args.legacy_ui:
-            ui_factory = partial(
-                WebUI,
-                host=args.host,
-                port=args.port,
-                open_browser=not args.no_browser and not args.tray,
-                tray=args.tray,
-            )
+        ui_factory = partial(
+            WebUI,
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_browser and not args.tray,
+            tray=args.tray,
+        )
         client = Twitch(settings, ui_factory=ui_factory)
 
         loop = asyncio.get_running_loop()
@@ -196,19 +188,35 @@ if __name__ == "__main__":
         except CaptchaRequired:
             exit_status = 1
             client.prevent_close()
-            client.print(_("error", "captcha"))
+            message = _("error", "captcha")
+            logger.critical("%s", message)
+            print(message, file=sys.stderr)
+            client.print(message)
+        except LoginException as exc:
+            # Login problems are expected/user-facing: show the reason, not a traceback.
+            exit_status = 1
+            client.prevent_close()
+            message = f"Login failed: {exc}"
+            logger.critical("%s", message)
+            print(message, file=sys.stderr)
+            client.print(message)
         except Exception:
             exit_status = 1
+            fatal_error = getattr(client.gui, "fatal_error", None)
             if sys.platform == "win32":
                 from platform_qol import show_startup_error
-                show_startup_error(str(getattr(client.gui, "fatal_error", None) or "Fatal miner error. See log.txt for details."))
-            if getattr(client.gui, "fatal_error", None):
+                show_startup_error(str(fatal_error or "Fatal miner error. See log.txt for details."))
+            if fatal_error:
                 logger.critical("Dashboard failed:\n%s", traceback.format_exc())
                 client.gui.close()
             else:
                 client.prevent_close()
-                client.print("Fatal error encountered:\n")
-                client.print(traceback.format_exc())
+                details = traceback.format_exc()
+                # Fatal errors must reach the console even at the default log level,
+                # which only shows ERROR and above and would otherwise hide this.
+                logger.critical("Fatal error encountered:\n%s", details)
+                print("Fatal error encountered:\n" + details, file=sys.stderr)
+                client.print("Fatal error encountered:\n" + details)
         finally:
             for sig in installed_signals:
                 loop.remove_signal_handler(sig)

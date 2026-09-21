@@ -67,9 +67,20 @@ function formatMinutes(minutes) {
   return hours ? `${hours}h ${mins}m remaining` : `${mins}m remaining`;
 }
 
+function safeUrl(value) {
+  // Only allow http(s) links sourced from Twitch/account data; avoids javascript:/data: hrefs.
+  try {
+    const url = new URL(String(value ?? ""), location.origin);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
 function formatDate(value, relative = false) {
   if (!value) return "—";
   const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
   if (relative) {
     const minutes = Math.round((date - Date.now()) / 60000);
     const absolute = Math.abs(minutes);
@@ -83,6 +94,7 @@ function formatDate(value, relative = false) {
 }
 
 function formatDuration(seconds) {
+  seconds = Number(seconds) || 0;
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -99,17 +111,32 @@ function toast(message, error = false) {
 }
 
 let csrfTokenPromise;
-async function request(url, options = {}) {
+function csrfToken() {
+  csrfTokenPromise ||= fetch("/api/csrf").then(response => {
+    if (!response.ok) throw new Error("Could not secure this request. Refresh and try again.");
+    return response.json();
+  }).then(data => data.token).catch(error => { csrfTokenPromise = null; throw error; });
+  return csrfTokenPromise;
+}
+function resetCsrfToken() {
+  csrfTokenPromise = null;
+}
+async function request(url, options = {}, retried = false) {
   const headers = {"Content-Type": "application/json", ...options.headers};
-  if (!["GET", "HEAD"].includes((options.method || "GET").toUpperCase())) {
-    csrfTokenPromise ||= fetch("/api/csrf").then(response => {
-      if (!response.ok) throw new Error("Could not secure this request. Refresh and try again.");
-      return response.json();
-    }).then(data => data.token).catch(error => { csrfTokenPromise = null; throw error; });
-    headers["X-CSRF-Token"] = await csrfTokenPromise;
+  const method = (options.method || "GET").toUpperCase();
+  if (!["GET", "HEAD"].includes(method)) {
+    headers["X-CSRF-Token"] = await csrfToken();
   }
   const response = await fetch(url, {...options, headers});
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) {
+    // The server rotates its CSRF token on logout/restart; a stale cached token
+    // returns 403. Drop it and retry the write exactly once.
+    if (response.status === 403 && !retried && !["GET", "HEAD"].includes(method)) {
+      resetCsrfToken();
+      return request(url, options, true);
+    }
+    throw new Error(await response.text());
+  }
   return response.json();
 }
 
@@ -284,7 +311,7 @@ function updateDashboard() {
 
   setContent("#reward-track", campaign ? `<div class="reward-track-heading"><span>Campaign rewards</span><span>${campaign.claimedDrops} of ${campaign.totalDrops} claimed</span></div><ol class="reward-track">${campaign.drops.slice(0, 4).map((reward, index) => `<li class="${reward.claimed ? "claimed" : reward.id === drop?.id ? "current" : ""}"><span class="reward-step" aria-hidden="true">${reward.claimed ? icon("check") : String(index + 1).padStart(2, "0")}</span><div><strong>${esc(reward.rewards || reward.name)}</strong><small>${reward.claimed ? "Claimed" : reward.id === drop?.id ? paused ? "Paused" : "In progress" : reward.claimable ? "Ready to claim" : `${reward.requiredMinutes} min watch time`}</small></div></li>`).join("")}</ol>${campaign.drops.length > 4 ? `<a class="text-link more-rewards" href="/campaigns/${encodeURIComponent(campaign.id)}" data-route>View all ${campaign.totalDrops} rewards ${icon("arrow")}</a>` : ""}` : "");
 
-  setContent("#session-facts", `<div class="stream-summary"><span class="stream-avatar" aria-hidden="true">${esc(channel?.name?.slice(0, 2).toUpperCase() || "—")}</span><div><span class="muted">${mining && channel ? "Watching on Twitch" : "Selected channel"}</span><strong>${channel ? `<a class="channel-link" href="${esc(channel.url)}" target="_blank" rel="noreferrer">${esc(channel.name)} <span aria-hidden="true">↗</span></a>` : "Finding a channel"}</strong></div></div><p class="stream-title">${channel ? esc(channel.title || channel.game || "") : "Eligible live streams appear automatically."}</p>`);
+  setContent("#session-facts", `<div class="stream-summary"><span class="stream-avatar" aria-hidden="true">${esc(channel?.name?.slice(0, 2).toUpperCase() || "—")}</span><div><span class="muted">${mining && channel ? "Watching on Twitch" : "Selected channel"}</span><strong>${channel ? `<a class="channel-link" href="${esc(safeUrl(channel.url))}" target="_blank" rel="noreferrer">${esc(channel.name)} <span aria-hidden="true">↗</span></a>` : "Finding a channel"}</strong></div></div><p class="stream-title">${channel ? esc(channel.title || channel.game || "") : "Eligible live streams appear automatically."}</p>`);
   const stats = state.stats || {};
   setContent("#stat-cards", `
     <div><dt>Drops claimed</dt><dd class="claimed-total">${stats.session?.drops_claimed || 0}<small>${stats.lifetime?.drops_claimed || 0} this installation</small></dd></div>
@@ -309,7 +336,8 @@ function campaignBadge(campaign) {
   if (!campaign.eligible) return ["Unavailable", "danger"];
   if (campaign.status === "active") return ["Active", "good"];
   if (campaign.status === "upcoming") return ["Upcoming", "warn"];
-  return ["Expired", ""];
+  if (campaign.status === "expired") return ["Expired", ""];
+  return ["Unavailable", "danger"];
 }
 
 function feasibility(campaign) {
@@ -373,7 +401,7 @@ function campaignDetailTemplate(campaign) {
       </div></section>
       <aside>
         <section class="panel side-note"><h3>Availability</h3><p>Starts ${esc(formatDate(campaign.startsAt))}</p><p>Ends ${esc(formatDate(campaign.endsAt))}</p><p>${esc(formatMinutes(campaign.remainingMinutes))} of eligible viewing. This excludes waiting for live channels and earlier games in your plan.</p></section>
-        ${!campaign.linked && campaign.linkUrl ? `<section class="panel side-note" style="margin-top:14px"><h3>Account connection required</h3><p>Connect the game account associated with this campaign before its rewards can be earned.</p><a class="button primary small" href="${esc(campaign.linkUrl)}" target="_blank" rel="noreferrer" style="display:inline-block;margin-top:13px">Open connection page</a></section>` : ""}
+        ${!campaign.linked && campaign.linkUrl ? `<section class="panel side-note" style="margin-top:14px"><h3>Account connection required</h3><p>Connect the game account associated with this campaign before its rewards can be earned.</p><a class="button primary small" href="${esc(safeUrl(campaign.linkUrl))}" target="_blank" rel="noreferrer" style="display:inline-block;margin-top:13px">Open connection page</a></section>` : ""}
         <section class="panel side-note" style="margin-top:14px"><h3>Mining preference</h3><p>The miner chooses games, so this preference applies to every eligible campaign for ${esc(campaign.game)}.</p><div class="button-row" style="margin-top:14px"><button class="button primary small" data-preference="priority" data-game="${esc(campaign.game)}" ${isPriority ? "disabled" : ""}>${isPriority ? "Prioritized" : "Mine this game first"}</button><button class="button secondary small" data-preference="exclude" data-game="${esc(campaign.game)}" ${isExcluded ? "disabled" : ""}>${isExcluded ? "Excluded" : "Exclude game"}</button></div></section>
       </aside>
     </div>`;
@@ -526,6 +554,8 @@ async function loadHistory() {
     results.innerHTML = (data.items || []).length ? `<div class="panel history-list">${data.items.map(item => `<article class="history-row">${artwork(item.imageUrl, "history-art")}<div><strong>${esc(item.name)}</strong><small><button type="button" class="history-game-link" data-history-game="${esc(item.gameId || "unknown")}">${esc(item.gameName || "Unknown game")}</button>${item.campaignName ? ` · ${esc(item.campaignName)}` : ""}</small></div><div class="history-date"><span>${item.lastAwardedAt ? esc(formatDate(item.lastAwardedAt)) : ["local", "both"].includes(item.source) && item.observedAt ? `Recorded ${esc(formatDate(item.observedAt))}` : "Claim date unavailable"}</span><small>${item.awardCount > 1 ? `${item.awardCount} awards recorded · ` : ""}${item.source === "local" ? "Recorded by this miner" : item.source === "both" ? "Recorded locally and in Twitch inventory" : "Observed in Twitch inventory"}</small></div></article>`).join("")}</div><div class="history-pagination"><button class="button secondary small" data-history-page="previous" ${historyOffset ? "" : "disabled"}>Previous</button><span>${historyOffset + 1}–${historyOffset + data.items.length} of ${data.total}</span><button class="button secondary small" data-history-page="next" ${historyOffset + data.items.length < data.total ? "" : "disabled"}>Next</button></div>` : '<div class="empty-state"><div><strong>No saved rewards found</strong><p>Try a different search or game. Rewards are saved when Twitch inventory is refreshed and when the miner claims them.</p></div></div>';
   } catch (error) {
     if (requestId !== historyRequest || !results.isConnected) return;
+    // Do not leave a previous account/query summary looking current after a failure.
+    $("#history-summary")?.replaceChildren();
     results.innerHTML = `<div class="empty-state"><div><strong>Could not load reward history</strong><p>${esc(error.message)}</p><button class="button secondary" data-history-retry>Try again</button></div></div>`;
   }
 }
@@ -548,15 +578,26 @@ function renderRoute(force = false) {
   if (route.name === "dashboard") updateDashboard();
   if (route.name === "campaigns") updateCampaignList();
   if (route.name === "campaign" && !changed && !settingsDirty) setContent("#view", campaignDetailTemplate(state.campaigns.find(item => item.id === route.id)));
-  if (route.name === "mining" && !changed && !settingsDirty && !document.activeElement.closest("#view")) $("#view").innerHTML = miningTemplate();
+  // Channels are the only live region on the mining page. The editor above is left
+  // untouched so typed game names and open pickers survive passive state updates.
   if (route.name === "mining") updateChannels();
-  if (route.name === "settings" && !changed && !settingsDirty && !document.activeElement.closest("#view")) $("#view").innerHTML = settingsTemplate();
-  if (route.name === "diagnostics" && !changed && !document.activeElement.closest("#view")) $("#view").innerHTML = diagnosticsTemplate();
+  // Settings is a form; rebuild it only on route entry, never from server snapshots
+  // (doing so would discard in-progress edits and reset scroll/focus).
+  if (route.name === "diagnostics" && !changed) updateDiagnostics();
+}
+
+function updateDiagnostics() {
+  const log = $("#activity-log");
+  const scrollTop = log ? log.scrollTop : 0;
+  $("#view").innerHTML = diagnosticsTemplate();
+  const next = $("#activity-log");
+  if (next && scrollTop > 0) next.scrollTop = scrollTop;
 }
 
 function navigate(path, {replace = false, focus = true} = {}) {
   if (settingsDirty && !confirm("Discard your unsaved changes?")) return;
   settingsDirty = false;
+  syncSettingsDraft(true);
   if (replace) history.replaceState({}, "", path);
   else history.pushState({}, "", path);
   currentPath = path;
@@ -832,6 +873,7 @@ addEventListener("popstate", () => {
   currentPath = location.pathname;
   activeRoute = null;
   settingsDirty = false;
+  syncSettingsDraft(true);
   renderRoute();
   scrollTo(0, 0);
 });
@@ -859,11 +901,20 @@ document.addEventListener("error", event => {
 }, true);
 
 const events = new EventSource("/api/events");
+events.onopen = () => {
+  connected = true;
+};
 events.onmessage = event => {
-  const nextState = JSON.parse(event.data);
+  let nextState;
+  try {
+    nextState = JSON.parse(event.data);
+  } catch (_error) {
+    return; // Ignore a malformed/partial frame; the next snapshot will recover.
+  }
   const accountChanged = String(state?.login?.userId || "") !== String(nextState.login?.userId || "")
     || Boolean(state?.canLogout) !== Boolean(nextState.canLogout);
   if (accountChanged) {
+    resetCsrfToken(); // The server rotates its CSRF token alongside the session.
     historyRequest++; // Ignore any response belonging to the previous account.
     historyOffset = 0;
     historyGame = "";

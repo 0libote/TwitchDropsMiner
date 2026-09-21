@@ -387,7 +387,7 @@ class WebUI:
         self.csrf_token = secrets.token_urlsafe(32)
         self._webhook_tasks: set[asyncio.Task] = set()
         self._webhook_sem = asyncio.Semaphore(4)
-        self.last_watchdog = 0.0
+        self.last_watchdog = monotonic()
         self.recovery_reason: str | None = None
         self._close_requested = asyncio.Event()
         self._server_task: asyncio.Task[None] | None = None
@@ -768,7 +768,12 @@ class WebUI:
 
     async def _metrics(self, request: web.Request) -> web.Response:
         del request
-        stats = self._twitch.stats.snapshot()
+        stats = getattr(self._twitch, "stats", None)
+        if stats is None:
+            return web.Response(
+                text="tdm_uptime_seconds 0\n", content_type="text/plain", status=503
+            )
+        stats = stats.snapshot()
         lifetime = stats["lifetime"]
         lines = [
             f'tdm_uptime_seconds {stats["uptimeSeconds"]}',
@@ -953,7 +958,13 @@ class WebUI:
         return web.json_response({"ok": True})
 
     async def _login(self, request: web.Request) -> web.Response:
-        if not self.login.submit(await request.json()):
+        try:
+            payload = await request.json()
+        except (ValueError, TypeError) as exc:
+            raise web.HTTPBadRequest(text="Login details must be valid JSON") from exc
+        if not isinstance(payload, dict):
+            raise web.HTTPBadRequest(text="Login details must be an object")
+        if not self.login.submit(payload):
             raise web.HTTPConflict(text="The miner is not waiting for credentials")
         return web.json_response({"ok": True})
 

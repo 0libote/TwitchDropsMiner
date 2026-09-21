@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from collections import abc
 
     from twitch import Twitch
-    from gui import WebsocketStatus
     from constants import JsonType, WebsocketTopic
 
 
@@ -40,7 +39,7 @@ class Websocket:
     def __init__(self, pool: WebsocketPool, index: int):
         self._pool: WebsocketPool = pool
         self._twitch: Twitch = pool._twitch
-        self._ws_gui: WebsocketStatus = self._twitch.gui.websockets
+        self._ws_gui = self._twitch.gui.websockets
         self._state_lock = asyncio.Lock()
         # websocket index
         self._idx: int = index

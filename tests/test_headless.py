@@ -11,6 +11,8 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 from yarl import URL
 
+from constants import ClientType  # noqa: E402  (needed by _FakeAuthTwitch)
+
 
 class HeadlessImportTests(unittest.TestCase):
     def test_stats_are_persisted(self) -> None:
@@ -228,6 +230,93 @@ class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertTrue(fixture["campaigns"][0]["drops"])
+
+
+class _FakeResponse:
+    def __init__(self, status: int, payload: object = None, *, json_error: Exception | None = None):
+        self.status = status
+        self._payload = payload
+        self._json_error = json_error
+
+    async def json(self) -> object:
+        if self._json_error is not None:
+            raise self._json_error
+        return self._payload
+
+
+class _FakeRequestContext:
+    def __init__(self, response: _FakeResponse) -> None:
+        self._response = response
+
+    async def __aenter__(self) -> _FakeResponse:
+        return self._response
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+class _FakeLogin:
+    async def ask_enter_code(self, page_url: object, user_code: str) -> None:
+        return None
+
+
+class _FakeAuthTwitch:
+    def __init__(self, response: _FakeResponse) -> None:
+        self._client_type = ClientType.ANDROID_APP
+        self.gui = SimpleNamespace(login=_FakeLogin())
+        self._response = response
+
+    def request(self, *args: object, **kwargs: object) -> _FakeRequestContext:
+        return _FakeRequestContext(self._response)
+
+
+class AuthHardeningTests(unittest.IsolatedAsyncioTestCase):
+    async def test_device_login_reports_twitch_error_instead_of_crashing(self) -> None:
+        from exceptions import LoginException
+        from twitch import _AuthState
+
+        response = _FakeResponse(400, {"status": 400, "message": "invalid client"})
+        state = _AuthState(_FakeAuthTwitch(response))
+        state.device_id = "test-device"
+        with self.assertRaises(LoginException) as raised:
+            await state._oauth_login()
+        self.assertIn("invalid client", str(raised.exception))
+
+    async def test_device_login_handles_unreadable_response(self) -> None:
+        from exceptions import LoginException
+        from twitch import _AuthState
+
+        response = _FakeResponse(200, json_error=ValueError("not json"))
+        state = _AuthState(_FakeAuthTwitch(response))
+        state.device_id = "test-device"
+        with self.assertRaises(LoginException):
+            await state._oauth_login()
+
+    async def test_device_login_handles_incomplete_response(self) -> None:
+        from exceptions import LoginException
+        from twitch import _AuthState
+
+        response = _FakeResponse(200, {})
+        state = _AuthState(_FakeAuthTwitch(response))
+        state.device_id = "test-device"
+        with self.assertRaises(LoginException):
+            await state._oauth_login()
+
+    async def test_login_endpoint_rejects_malformed_json(self) -> None:
+        from webui import WebUI
+
+        ui = WebUI(SimpleNamespace())
+        client = TestClient(TestServer(ui._build_app()))
+        await client.start_server()
+        try:
+            response = await client.post(
+                "/api/login",
+                data="not json",
+                headers={"Content-Type": "application/json", "X-CSRF-Token": ui.csrf_token},
+            )
+            self.assertEqual(response.status, 400)
+        finally:
+            await client.close()
 
 
 class WebSettingsTests(unittest.IsolatedAsyncioTestCase):

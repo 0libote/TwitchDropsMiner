@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sys
-import platform
 import fnmatch
 from pathlib import Path
 from collections import abc
@@ -13,7 +12,7 @@ SELF_PATH = str(Path(".").resolve())
 if SELF_PATH not in sys.path:
     sys.path.insert(0, SELF_PATH)
 
-from constants import WORKING_DIR, SITE_PACKAGES_PATH, DEFAULT_LANG
+from constants import WORKING_DIR, DEFAULT_LANG
 
 if TYPE_CHECKING:
     from PyInstaller.building.splash import Splash
@@ -44,9 +43,6 @@ to_add: list[tuple[Path, str, bool]] = [
     (Path("icons/idle.ico"), "./icons", True),
     (Path("icons/error.ico"), "./icons", True),
     (Path("icons/maint.ico"), "./icons", True),
-    # SeleniumWire HTTPS/SSL cert file and key
-    (Path(SITE_PACKAGES_PATH, "seleniumwire/ca.crt"), "./seleniumwire", False),
-    (Path(SITE_PACKAGES_PATH, "seleniumwire/ca.key"), "./seleniumwire", False),
 ]
 for lang_filepath in WORKING_DIR.joinpath("lang").glob("*.json"):
     if lang_filepath.stem != DEFAULT_LANG:
@@ -63,40 +59,14 @@ for source_path, dest_path, required in to_add:
 hooksconfig: dict[str, Any] = {}
 binaries: list[tuple[Path, str]] = []
 hiddenimports: list[str] = [
-    "PIL._tkinter_finder",
     "setuptools._distutils.log",
     "setuptools._distutils.dir_util",
     "setuptools._distutils.file_util",
     "setuptools._distutils.archive_util",
 ]
 
-if sys.platform == "linux":
-    # Needed files for better system tray support on Linux via pystray (AppIndicator backend).
-    arch: str = platform.machine()
-    candidate_library_paths: list[Path] = [
-        Path(f"/usr/lib/{arch}-linux-gnu"),  # Debian/Ubuntu multiarch
-        Path("/usr/lib64"),  # Fedora/RHEL
-        Path("/usr/lib"),  # Arch and other single-dir distros
-    ]
-    for libraries_path in candidate_library_paths:
-        if (libraries_path / "libayatana-appindicator3.so.1").exists():
-            break
-    datas.append(
-        (libraries_path / "girepository-1.0/AyatanaAppIndicator3-0.1.typelib", "gi_typelibs")
-    )
-    binaries.append((libraries_path / "libayatana-appindicator3.so.1", "."))
-
-    hiddenimports.extend([
-        "gi.repository.Gtk",
-        "gi.repository.GObject",
-    ])
-    hooksconfig = {
-        "gi": {
-            "icons": [],
-            "themes": [],
-            "languages": ["en_US"]
-        }
-    }
+# The system tray is Windows-only (see platform_qol.NativeTray); no GI/AppIndicator
+# data is needed for the packaged builds.
 
 a = Analysis(
     ["main.py"],

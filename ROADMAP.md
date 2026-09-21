@@ -11,7 +11,7 @@ and real failure data.
 | 3 | Health | Liveness, readiness and redacted diagnostics endpoints | Reason codes and configurable readiness policy |
 | 4 | Activity | Timestamped bounded activity and downloadable diagnostics | Severity filters and optional persistent event history |
 | 5 | Notifications | Configurable JSON webhook with a dashboard test action | Templates and service presets |
-| 6 | Authentication | Optional Basic protection, CSRF tokens, host/origin checks | Secure browser session, logout and reverse-proxy identity support |
+| 6 | Authentication | Optional Basic protection, CSRF tokens with rotation on logout, host/origin checks | Secure form-based browser sessions and reverse-proxy identity support |
 | 7 | Docker | Read-only filesystem, init process, healthcheck and environment configuration | Docker secrets examples and published Compose profiles |
 | 8 | Watchdog | Rate-limited inventory refresh after 15 minutes without confirmed progress | Channel rotation and escalating recovery with reason history |
 | 9 | Portability | Cookie-free settings/statistics export and settings import | Validated schema versions and an explicit encrypted full backup |
@@ -26,7 +26,7 @@ and real failure data.
 
 ## Next milestone
 
-1. Add form-based dashboard sessions and browser logout.
+1. Add form-based dashboard sessions and a real browser logout (a CSRF-rotating disconnect action exists).
 2. Extend saved reward history with per-game mining time and verified export importers.
 3. Exercise Windows tray, autostart, sleep and startup-error behavior on packaged CI artifacts.
 4. Add notification service presets and clearer delivery history.

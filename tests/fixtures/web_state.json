@@ -121,7 +121,7 @@
     "availableDropsCheck": true,
     "proxy": ""
   },
-  "system": {"platform": "Linux (preview)", "version": "preview", "upstreamVersion": "sample", "python": "3.12", "authenticationEnabled": false},
+  "system": {"platform": "Linux (preview)", "version": "preview", "upstreamVersion": "sample", "python": "3.14", "authenticationEnabled": false},
   "stats": {"uptimeSeconds": 15620, "session": {"drops_claimed": 4, "mining_minutes": 186}, "lifetime": {"drops_claimed": 128, "mining_minutes": 9085, "watch_failures": 0, "watch_heartbeats": 274, "last_progress_at": "2026-09-04T10:38:00+00:00"}},
   "summary": {"campaigns": 4, "activeCampaigns": 2, "completedCampaigns": 1, "onlineChannels": 2}
 }

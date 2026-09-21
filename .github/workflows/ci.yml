@@ -13,23 +13,54 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor and current supported runtimes (pyproject requires >=3.10).
+        python-version: ["3.10", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install -r requirements-headless.txt ruff==0.16.6 pip-audit
+      - run: pip install -r requirements-headless.txt ruff==0.16.6
       - name: Validate Python and translations
         run: |
           ruff check .
           python -m compileall -q .
           python -m unittest discover -s tests -v
           for file in lang/*.json; do python -m json.tool "$file" >/dev/null; done
+
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-headless.txt pip-audit
+      # These must be able to fail the build: no "|| true" masking.
       - name: Audit Python dependencies
-        run: pip-audit --disable-pip --local || true
+        run: pip-audit --disable-pip --local
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2 # pinned to match packageManager in package.json
       - name: Audit JS dependencies
-        run: bun audit || true
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun audit
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-headless.txt
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2 # pinned to match packageManager in package.json
@@ -49,7 +80,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, security-audit, browser]
     permissions:
       contents: read
       packages: write
@@ -67,16 +98,30 @@ jobs:
       - name: Smoke-test the running container
         run: |
           docker run --detach --rm --name tdm-next-smoke \
-            --env TDM_ACCESS_TOKEN=ci-smoke-token \
+            --env TDM_WEB_TOKEN=ci-smoke-token \
             --publish 127.0.0.1:18766:8080 \
             tdm-next:test
           trap 'docker stop tdm-next-smoke' EXIT
           for attempt in {1..30}; do
-            curl --fail --silent http://127.0.0.1:18766/healthz && exit 0
+            if curl --fail --silent http://127.0.0.1:18766/healthz >/dev/null; then
+              break
+            fi
             sleep 1
           done
-          docker logs tdm-next-smoke
-          exit 1
+          # /healthz bypasses auth; verify the protection is actually enabled.
+          unauthenticated=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18766/)
+          if [ "$unauthenticated" != "401" ]; then
+            echo "Expected unauthenticated dashboard access to return 401, got $unauthenticated"
+            docker logs tdm-next-smoke
+            exit 1
+          fi
+          authenticated=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --user "tdm:ci-smoke-token" http://127.0.0.1:18766/)
+          if [ "$authenticated" != "200" ]; then
+            echo "Expected authenticated dashboard access to return 200, got $authenticated"
+            docker logs tdm-next-smoke
+            exit 1
+          fi
       - name: Log in to GitHub Container Registry
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         env:
@@ -116,7 +161,7 @@ jobs:
           - os: macos-15-intel
             artifact: Twitch-Drops-Miner-Next-macOS-x64
     runs-on: ${{ matrix.os }}
-    needs: test
+    needs: [test, security-audit]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7

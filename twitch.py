@@ -59,7 +59,6 @@ from constants import (
 if TYPE_CHECKING:
     from collections.abc import Callable
     from utils import Game
-    from gui import LoginForm
     from channel import Stream
     from settings import Settings
     from inventory import TimedDrop
@@ -134,8 +133,25 @@ class _AuthState:
         self._logged_in.clear()
         self._twitch.gui.help._invalidate_button.config(state="disabled")
 
+    @staticmethod
+    async def _response_json(response: aiohttp.ClientResponse) -> JsonType:
+        # Twitch error bodies are not always JSON, and success bodies are not
+        # guaranteed to contain every expected key. Normalize so callers can
+        # fail with a useful message instead of a KeyError/ContentTypeError.
+        try:
+            data = await response.json()
+        except (aiohttp.ContentTypeError, ValueError) as exc:
+            raise LoginException(
+                f"Twitch returned an unreadable response during login (HTTP {response.status})"
+            ) from exc
+        if not isinstance(data, dict):
+            raise LoginException(
+                f"Twitch returned an unexpected response during login (HTTP {response.status})"
+            )
+        return data
+
     async def _oauth_login(self) -> str:
-        login_form: LoginForm = self._twitch.gui.login
+        login_form = self._twitch.gui.login
         client_info: ClientInfo = self._twitch._client_type
         headers = {
             "Accept": "application/json",
@@ -167,12 +183,25 @@ class _AuthState:
                     #     "user_code": "8 chars [A-Z]",
                     #     "verification_uri": "https://www.twitch.tv/activate?device-code=ABCDEFGH"
                     # }
-                    response_json: JsonType = await response.json()
+                    status = response.status
+                    response_json: JsonType = await self._response_json(response)
+                if status != 200:
+                    reason = str(response_json.get("message", "unknown error"))
+                    raise LoginException(
+                        "Twitch rejected the device authorization request "
+                        f"(HTTP {status}: {reason}). A new login cannot be started with "
+                        "this client right now; an existing saved session is required."
+                    )
+                try:
                     device_code: str = response_json["device_code"]
                     user_code: str = response_json["user_code"]
-                    interval: int = response_json["interval"]
+                    interval: int = int(response_json.get("interval") or 5)
                     verification_uri: URL = URL(response_json["verification_uri"])
-                    expires_at = now + timedelta(seconds=response_json["expires_in"])
+                    expires_at = now + timedelta(seconds=int(response_json["expires_in"]))
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise LoginException(
+                        "Twitch returned an incomplete device authorization response"
+                    ) from exc
 
                 # Print the code to the user, open them the activate page so they can type it in
                 await login_form.ask_enter_code(verification_uri, user_code)
@@ -192,18 +221,35 @@ class _AuthState:
                         data=payload,
                         invalidate_after=expires_at,
                     ) as response:
-                        # 200 means success, 400 means the user haven't entered the code yet
-                        if response.status != 200:
-                            continue
-                        response_json = await response.json()
+                        status = response.status
+                        response_json = await self._response_json(response)
+                    if status == 200:
                         # {
                         #     "access_token": "40 chars [A-Za-z0-9]",
                         #     "refresh_token": "40 chars [A-Za-z0-9]",
                         #     "scope": [...],
                         #     "token_type": "bearer"
                         # }
-                        self.access_token = cast(str, response_json["access_token"])
+                        access_token = response_json.get("access_token")
+                        if not access_token:
+                            raise LoginException(
+                                "Twitch login response did not include an access token"
+                            )
+                        self.access_token = cast(str, access_token)
                         return self.access_token
+                    # Twitch reports the pending/terminal state in the message field.
+                    error = str(response_json.get("message", ""))
+                    if error in ("", "authorization_pending"):
+                        continue
+                    if error == "slow_down":
+                        interval = min(interval + 5, 30)
+                        continue
+                    if error == "expired_token":
+                        # request a fresh device code
+                        break
+                    if error == "access_denied":
+                        raise LoginException("Twitch device authorization was denied")
+                    raise LoginException(f"Twitch device authorization failed: {error}")
             except RequestInvalid:
                 # the device_code has expired, request a new code
                 continue
@@ -211,7 +257,7 @@ class _AuthState:
     async def _login(self) -> str:
         logger.info("Login flow started")
         gui_print = self._twitch.gui.print
-        login_form: LoginForm = self._twitch.gui.login
+        login_form = self._twitch.gui.login
         client_info: ClientInfo = self._twitch._client_type
 
         token_kind: str = ''
@@ -397,7 +443,7 @@ class _AuthState:
             self.device_id = cookie["unique_id"].value
         if not self._hasattrs("access_token", "user_id"):
             # looks like we're missing something
-            login_form: LoginForm = self._twitch.gui.login
+            login_form = self._twitch.gui.login
             logger.info("Checking login")
             login_form.update(_("gui", "login", "logging_in"), None)
             for client_mismatch_attempt in range(2):
@@ -480,12 +526,12 @@ class Twitch:
         self._client_type: ClientInfo = ClientType.ANDROID_APP
         self._session: aiohttp.ClientSession | None = None
         self._auth_state: _AuthState = _AuthState(self)
-        # User interface. Import the legacy Tk UI only when it is explicitly used;
-        # headless/web runs must not require a display server or Tkinter.
+        # The web dashboard is the only UI. It is imported lazily so importing the
+        # engine (tests, tooling) never pulls in the HTTP server or a display server.
         if ui_factory is None:
-            from gui import GUIManager
+            from webui import WebUI
 
-            ui_factory = GUIManager
+            ui_factory = WebUI
         self.gui = ui_factory(self)
         # Storing and watching channels
         self.channels: OrderedDict[int, Channel] = OrderedDict()
@@ -1518,10 +1564,13 @@ class Twitch:
                 for cid in campaign_ids
             ]
         )
-        fetched_data: dict[str, JsonType] = {
-            (campaign_data := response_json["data"]["user"]["dropCampaign"])["id"]: campaign_data
-            for response_json in response_list
-        }
+        fetched_data: dict[str, JsonType] = {}
+        for response_json in response_list:
+            # Twitch omits dropCampaign for campaigns that are no longer available
+            # to this account; skip them instead of crashing on None["id"].
+            campaign_data: JsonType | None = response_json["data"]["user"]["dropCampaign"]
+            if campaign_data is not None:
+                fetched_data[campaign_data["id"]] = campaign_data
         return self._merge_data(campaign_ids, fetched_data)
 
     async def fetch_inventory(self) -> None:
@@ -1530,11 +1579,13 @@ class Twitch:
         # fetch in-progress campaigns (inventory)
         response = await self.gql_request(GQL_QUERIES["Inventory"])
         inventory: JsonType = response["data"]["currentUser"]["inventory"]
-        self._record_history("ingest_inventory", inventory.get("gameEventDrops"))
+        # Twitch can return null for either list; normalize before iterating.
+        game_event_drops: list[JsonType] = inventory.get("gameEventDrops") or []
+        self._record_history("ingest_inventory", game_event_drops)
         ongoing_campaigns: list[JsonType] = inventory["dropCampaignsInProgress"] or []
         # this contains claimed benefit edge IDs, not drop IDs
         claimed_benefits: dict[str, datetime] = {
-            b["id"]: timestamp(b["lastAwardedAt"]) for b in inventory["gameEventDrops"]
+            b["id"]: timestamp(b["lastAwardedAt"]) for b in game_event_drops
         }
         inventory_data: dict[str, JsonType] = {c["id"]: c for c in ongoing_campaigns}
         # fetch general available campaigns data (campaigns)
@@ -1609,6 +1660,10 @@ class Twitch:
         self._drops.clear()
         self.gui.inv.clear()
         self.inventory.clear()
+        # Rebuild the campaign index from scratch so stale campaign objects from a
+        # previous refresh are not retained (memory growth) or consulted for channel
+        # eligibility checks in Channel._check_drops_enabled.
+        self._campaigns.clear()
         self._mnt_triggers.clear()
         switch_triggers: set[datetime] = set()
         next_hour = datetime.now(timezone.utc) + timedelta(hours=1)

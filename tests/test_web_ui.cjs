@@ -15,8 +15,13 @@ const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/web_st
     // All actions are intercepted: this suite must never control a real miner.
     const requests = [];
     let historyMode = "success";
+    let rejectWrite = null;
     await page.route('**/api/**', route => {
       requests.push({url: route.request().url(), body: route.request().postDataJSON(), csrf: route.request().headers()["x-csrf-token"]});
+      if (rejectWrite && route.request().url().endsWith(rejectWrite)) {
+        rejectWrite = null;
+        return route.fulfill({status: 403, body: 'Invalid request token; reload the dashboard and try again'});
+      }
       if (route.request().url().includes('/api/csrf')) return route.fulfill({json: {token: 'test-token'}});
       if (route.request().url().includes('/api/history') && historyMode === 'error') return route.fulfill({status: 503, body: 'History temporarily unavailable'});
       if (route.request().url().includes('/api/history') && historyMode === 'empty') return route.fulfill({json: {items: [], total: 0, summary: {games: []}}});
@@ -83,6 +88,15 @@ const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/web_st
     await page.locator('[data-save-settings]').click();
     await page.waitForFunction(() => document.querySelector('#save-bar').classList.contains('hidden'));
     assert.ok(requests.some(request => request.url.endsWith('/api/settings') && request.body.trayNotifications === false));
+
+    // A rotated CSRF token (logout/restart) must be refetched and the write retried once.
+    const csrfCalls = requests.filter(request => request.url.includes('/api/csrf')).length;
+    rejectWrite = '/api/actions/restart';
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('[data-action="restart"]').click();
+    await page.waitForFunction(() => /requested/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 5000});
+    assert.ok(requests.filter(request => request.url.endsWith('/api/actions/restart')).length >= 2, 'A 403 write should be retried');
+    assert.ok(requests.filter(request => request.url.includes('/api/csrf')).length > csrfCalls, 'A 403 should force a CSRF token refetch');
 
     await goto('/mining');
     const input = page.locator('#priority-game');

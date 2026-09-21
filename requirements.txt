@@ -1,8 +1,8 @@
 aiohttp>=3.9,<4.0
+yarl>=1.9
+truststore
+
+# desktop tray (Windows only; imported lazily by platform_qol)
 Pillow
 pystray
-PyGObject<3.51; sys_platform == "linux"  # required for better system tray support on Linux
-
-# environment-dependent dependencies
 pywin32; sys_platform == "win32"
-truststore

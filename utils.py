@@ -19,7 +19,7 @@ from contextlib import suppress
 from functools import cached_property
 from datetime import datetime, timezone
 from collections import abc, OrderedDict
-from typing import TYPE_CHECKING, Any, Literal, Generic, TypeVar, ParamSpec, cast
+from typing import Any, Literal, Generic, TypeVar, ParamSpec, cast
 from collections.abc import Callable, Mapping
 
 from yarl import URL
@@ -34,21 +34,6 @@ _D = TypeVar("_D")  # default
 _P = ParamSpec("_P")  # params
 _JSON_T = TypeVar("_JSON_T", bound=Mapping[Any, Any])
 logger = logging.getLogger("TwitchDrops")
-
-if TYPE_CHECKING:
-    import tkinter as tk
-
-
-def set_root_icon(root: tk.Tk, image_path: Path | str) -> None:
-    from PIL import Image as Image_module
-    from PIL.ImageTk import PhotoImage
-
-    with Image_module.open(image_path) as image:
-        icon_photo = PhotoImage(master=root, image=image)
-    root.iconphoto(True, icon_photo)  # type: ignore[arg-type]
-    # keep a reference to the PhotoImage to avoid the ResourceWarning
-    root._icon_image = icon_photo  # type: ignore[attr-defined]
-
 
 async def first_to_complete(coros: abc.Iterable[abc.Coroutine[Any, Any, _T]]) -> _T:
     # In Python 3.11, we need to explicitly wrap awaitables

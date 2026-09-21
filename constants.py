@@ -25,21 +25,6 @@ IS_PACKAGED = hasattr(sys, "_MEIPASS") or IS_APPIMAGE
 # logging special levels
 CALL: int = logging.INFO - 1
 logging.addLevelName(CALL, "CALL")
-# site-packages venv path changes depending on the system platform
-if sys.platform == "win32":
-    SYS_SITE_PACKAGES = "Lib/site-packages"
-else:
-    # On Linux, the site-packages path includes a versioned 'pythonX.Y' folder part
-    # The Lib folder is also spelled in lowercase: 'lib'
-    version_info = sys.version_info
-    SYS_SITE_PACKAGES = f"lib/python{version_info.major}.{version_info.minor}/site-packages"
-# scripts venv path changes depending on the system platform
-if sys.platform == "win32":
-    SYS_SCRIPTS = "Scripts"
-else:
-    SYS_SCRIPTS = "bin"
-
-
 def _resource_path(relative_path: Path | str) -> Path:
     """
     Get an absolute path to a bundled resource.
@@ -86,10 +71,9 @@ if IS_APPIMAGE:
     SELF_PATH = Path(os.environ["APPIMAGE"]).resolve()
 else:
     # NOTE: pyinstaller will set sys.argv[0] to its own executable when building
-    # NOTE: sys.argv[0] will point to gui.py when running the gui.py directly for GUI debug
-    # detect these and use __file__ and main.py redirection instead
+    # detect that and use __file__ and main.py redirection instead
     SELF_PATH = Path(sys.argv[0]).resolve()
-    if SELF_PATH.stem == "pyinstaller" or SELF_PATH.name == "gui.py":
+    if SELF_PATH.stem == "pyinstaller":
         SELF_PATH = Path(__file__).with_name("main.py").resolve()
 WORKING_DIR = SELF_PATH.parent
 # Persistent state lives outside packaged application bundles. Source runs keep
@@ -109,10 +93,6 @@ try:
     DATA_DIR.chmod(0o700)
 except OSError:
     pass
-# Development paths
-VENV_PATH = Path(WORKING_DIR, "env")
-SITE_PACKAGES_PATH = Path(VENV_PATH, SYS_SITE_PACKAGES)
-SCRIPTS_PATH = Path(VENV_PATH, SYS_SCRIPTS)
 # Translations path
 # NOTE: These don't have to be available to the end-user, so the path points to the internal dir
 LANG_PATH = _resource_path("lang")
