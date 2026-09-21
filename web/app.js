@@ -508,6 +508,9 @@ function diagnosticsTemplate() {
   const socketTopics = state.websockets.reduce((sum, socket) => sum + (socket.topics || 0), 0);
   const lines = [...(state.messages || [])].reverse();
   const notifications = state.notifications || [];
+  const networkMessage = state.networkIssues?.length
+    ? "Requests are failing for " + esc(state.networkIssues.join(", ")) + "."
+    : "No repeated Twitch network failures have been detected.";
   return `
     <div class="diagnostic-grid">
       <article class="panel diagnostic-card"><span>Miner state</span><strong>${esc(state.activity || "Unknown")}</strong><small>${esc(state.status || "No status message")}</small></article>
@@ -521,7 +524,7 @@ function diagnosticsTemplate() {
       <div class="panel-header"><div><h2>Event log</h2><p class="muted">Newest events appear first</p></div><div class="button-row"><button class="button secondary small" type="button" data-copy-log>Copy log</button><a class="button secondary small" href="/api/diagnostics" download>Download</a></div></div>
       <div class="log" id="activity-log">${notifications.map(item => `<p class="notification"><strong>${esc(formatDate(item.time))} · ${esc(item.title)}</strong> ${esc(item.message)}</p>`).join("")}${lines.map(item => `<p><small>${esc(formatDate(item.time))}</small> ${esc(item.message || item)}</p>`).join("") || (!notifications.length ? "<p>Waiting for miner events…</p>" : "")}</div>
     </section>
-    <section class="panel side-note" style="margin-top:14px"><h3>Network health</h3><p>${state.networkIssues?.length ? `Requests are failing for ${esc(state.networkIssues.join(", "))}.` : "No repeated Twitch network failures have been detected."}</p><p class="muted">${esc(state.system.platform)} · Python ${esc(state.system.python)} · ${state.system.authenticationEnabled ? "Dashboard authentication enabled" : "Dashboard authentication disabled"}</p><div class="button-row" style="margin-top:12px"><a class="button secondary small" href="/api/export?stats=1" download>Export settings & stats</a></div><label class="button quiet small" style="display:inline-block;margin-top:10px">Import settings<input type="file" accept="application/json" data-import-settings hidden></label></section>`;
+    <section class="panel side-note" style="margin-top:14px"><h3>Network health</h3><p>${networkMessage}</p><p class="muted">${esc(state.system.platform)} · Python ${esc(state.system.python)} · ${state.system.authenticationEnabled ? "Dashboard authentication enabled" : "Dashboard authentication disabled"}</p><div class="button-row" style="margin-top:12px"><a class="button secondary small" href="/api/export?stats=1" download>Export settings & stats</a></div><label class="button quiet small" style="display:inline-block;margin-top:10px">Import settings<input type="file" accept="application/json" data-import-settings hidden></label></section>`;
 }
 
 let historyOffset = 0;
