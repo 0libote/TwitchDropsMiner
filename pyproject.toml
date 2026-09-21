@@ -14,7 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ruff==0.16.8",  # keep in sync with ci.yml pip install
+    "ruff==0.16.8",  # single source of truth; ci.yml reads this pin from pyproject
 ]
 desktop = [
     # Windows system tray; imported lazily by platform_qol.
