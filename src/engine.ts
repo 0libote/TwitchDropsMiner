@@ -111,7 +111,7 @@ export class Twitch {
   private readonly stateChange = new AsyncEvent();
   private readonly drops = new Map<string, TimedDrop>();
   readonly campaigns = new Map<string, DropsCampaign>();
-  private readonly channels = new Map<number, Channel>();
+  readonly channels = new Map<number, Channel>();
   private readonly mntTriggers: number[] = [];
   private watchingTask: Promise<void> | null = null;
   private mntTask: Promise<void> | null = null;

@@ -29,7 +29,7 @@ parity; `src/` modules are developed and tested side-by-side.
 | `channel.py`, `inventory.py` (models) | `src/models.ts` (+`utils.ts`, `errors.ts`) | ✅ done | 29 tests; `EngineLike` interface stands in for the engine |
 | `utils.py` async (`AwaitableValue`, `chunk`, `create_nonce`) | `src/async.ts` | ✅ done | `RateLimiter` moves with the engine |
 | `websocket.py` | `src/websocket.ts` | ✅ done | Bun-native sockets; same backoff/ping/topic/pool rules, tested live |
-| `twitch.py` (engine) | `src/engine.ts` | phase 2 | The big one: state machine, GQL, watch loop |
+| `twitch.py` (auth + engine) | `src/auth.ts`, `src/engine.ts` (+`cookies.ts`, `http.ts`, `i18n.ts`) | ✅ done | 21 tests on scripted transport; JSON cookies (one re-login); `EngineGui` stands in for the server |
 | `webui.py` (dashboard server) | `src/server.ts` | phase 2 | `Bun.serve()` routes + SSE; serve `web/` |
 | `main.py` (CLI/lifecycle) | `src/main.ts` | phase 3 | Args, signals, lock file |
 | `translate.py`, `lang/*.json` | reuse as-is | phase 3 | Load JSON directly, no port needed |
