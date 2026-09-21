@@ -22,9 +22,8 @@ import aiohttp
 from aiohttp import web
 from yarl import URL
 
-from constants import DATA_DIR, LOG_PATH, PriorityMode, State
+from constants import DATA_DIR, PriorityMode, State
 from fork_version import __version__
-from platform_qol import NativeTray, open_path, set_keep_awake, set_windows_autostart
 from version import __version__ as upstream_version
 
 # Blocklist for SSRF: proxy/webhook must not point at private/link-local/metadata hosts.
@@ -248,15 +247,11 @@ class HelpView:
         self._invalidate_button = _Button(manager)
 
 
-class TrayView(_Reactive):
-    def change_icon(self, state: str) -> None:
-        self.manager.activity_state = state
-        set_keep_awake(state == "active" and self.manager._twitch.settings.keep_awake)
-        self.manager.native_tray.update(self.manager._tray_title(), state)
-        self.changed()
+class Notifier(_Reactive):
+    """Docker-only activity + webhook notifications (no OS tray)."""
 
-    def update_title(self, drop: TimedDrop | None) -> None:
-        self.manager.native_tray.update(self.manager._tray_title(drop), self.manager.activity_state)
+    def set_activity(self, state: str) -> None:
+        self.manager.activity_state = state
         self.changed()
 
     def notify(self, message: str, title: str) -> None:
@@ -266,15 +261,10 @@ class TrayView(_Reactive):
         self.manager.notifications.appendleft(
             {"time": datetime.now(timezone.utc).isoformat(), "title": title, "message": message}
         )
-        self.manager.native_tray.notify(message, title)
         self.changed()
 
-    def restore(self) -> None:
-        return
-
     def stop(self) -> None:
-        self.manager.native_tray.stop()
-        set_keep_awake(False)
+        return
 
 
 class ProgressView(_Reactive):
@@ -377,7 +367,6 @@ class WebUI:
         host: str = "127.0.0.1",
         port: int = 8080,
         open_browser: bool = True,
-        tray: bool = False,
     ) -> None:
         self._twitch = twitch
         self.host = host
@@ -412,14 +401,12 @@ class WebUI:
         # The dashboard binds to loopback and is served over plain HTTP by design;
         # TLS for remote access belongs at the user's reverse proxy. NOSONAR(S5332)
         self.dashboard_url = f"http://{url_host}:{port}/"  # NOSONAR
-        self.native_tray = NativeTray(self.dashboard_url, self.close)
-        self._tray_enabled = tray
         self._clock_task: asyncio.Task[None] | None = None
         self.status = StatusView(self)
         self.websockets = WebsocketView(self)
         self.login = LoginView(self)
         self.help = HelpView(self)
-        self.tray = TrayView(self)
+        self.notifier = Notifier(self)
         self.progress = ProgressView(self)
         self.channels = ChannelView(self)
         self.inv = InventoryView(self)
@@ -504,8 +491,6 @@ class WebUI:
                 "trayNotifications": settings.tray_notifications,
                 "enableBadgesEmotes": settings.enable_badges_emotes,
                 "availableDropsCheck": settings.available_drops_check,
-                "autostart": getattr(settings, "autostart_tray", False),
-                "keepAwake": getattr(settings, "keep_awake", False),
                 "proxy": str(settings.proxy),
                 "webhookUrl": "" if os.environ.get("TDM_WEBHOOK_URL") else getattr(settings, "webhook_url", ""),
             },
@@ -604,10 +589,8 @@ class WebUI:
         self.progress.stop_timer()
         if self._clock_task is not None:
             self._clock_task.cancel()
-        self.native_tray.stop()
         for task in self._webhook_tasks:
             task.cancel()
-        set_keep_awake(False)
 
     def _build_app(self) -> web.Application:
         app = web.Application(middlewares=[self._security_headers, self._authentication, self._csrf_protection])
@@ -639,8 +622,6 @@ class WebUI:
         try:
             await site.start()
             logger.info("Dashboard: %s", self.dashboard_url)
-            if self._tray_enabled:
-                self.native_tray.start()
             if self.open_browser:
                 asyncio.get_running_loop().run_in_executor(
                     None, partial(webbrowser.open, self.dashboard_url)
@@ -864,10 +845,6 @@ class WebUI:
             self._twitch.change_state(State.RESTART, force=True)
         elif action == "shutdown":
             self.close()
-        elif action == "open-data":
-            open_path(DATA_DIR)
-        elif action == "open-log":
-            open_path(LOG_PATH if LOG_PATH.exists() else DATA_DIR)
         else:
             raise web.HTTPNotFound(text="Unknown action")
         return web.json_response({"ok": True})
@@ -914,7 +891,7 @@ class WebUI:
             candidate["connection_quality"] = value
         for name, attribute in {
             "trayNotifications": "tray_notifications", "enableBadgesEmotes": "enable_badges_emotes",
-            "availableDropsCheck": "available_drops_check", "keepAwake": "keep_awake", "autostart": "autostart_tray",
+            "availableDropsCheck": "available_drops_check",
         }.items():
             if name in payload:
                 if type(payload[name]) is not bool:
@@ -942,17 +919,10 @@ class WebUI:
         try:
             for name, value in candidate.items():
                 setattr(settings, name, value)
-            if "autostart_tray" in candidate and candidate["autostart_tray"] != previous["autostart_tray"]:
-                set_windows_autostart(candidate["autostart_tray"])
             settings.save()
         except Exception as exc:
             for name, value in previous.items():
                 setattr(settings, name, value)
-            if "autostart_tray" in candidate:
-                try:
-                    set_windows_autostart(bool(previous["autostart_tray"]))
-                except OSError:
-                    logger.exception("Unable to restore autostart after a failed save")
             logger.exception("Settings save failed")
             raise web.HTTPInternalServerError(text="Settings could not be saved") from exc
         self._twitch.change_state(State.GAMES_UPDATE)
@@ -1013,11 +983,9 @@ class WebUI:
         subone: bool = False,
     ) -> None:
         self.progress.display(drop, countdown=countdown, subone=subone)
-        self.tray.update_title(drop)
 
     def clear_drop(self) -> None:
         self.progress.display(None)
-        self.tray.update_title(None)
 
     def print(self, message: str) -> None:
         logger.info("%s", message)
@@ -1040,12 +1008,6 @@ class WebUI:
                 stats.last_recovery_at = datetime.now(timezone.utc).isoformat()
             self.send_webhook("network_recovery", "Twitch network recovered", f"Requests to {host} recovered")
             self.changed()
-
-    def _tray_title(self, drop: TimedDrop | None = None) -> str:
-        drop = drop or self.progress.drop
-        if drop is None:
-            return f"Twitch Drops Miner Next — {self.status_text}"
-        return f"Twitch Drops Miner Next — {drop.rewards_text()} {drop.progress:.0%}"
 
     async def _deliver_webhook(self, event: str, title: str, message: str) -> bool:
         async with self._webhook_sem:

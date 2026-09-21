@@ -17,17 +17,17 @@ and real failure data.
 | 9 | Portability | Cookie-free settings/statistics export and settings import | Validated schema versions and an explicit encrypted full backup |
 | 10 | Versioning | App, engine, Python, platform and packaging details in diagnostics | Rate-limited update checks with release notes |
 | 11 | Metrics | Dependency-free Prometheus counters at `/metrics` | Authentication policy, labels and Grafana example dashboard |
-| 12 | Windows tray | Open-dashboard and exit menu with status icon/title | Pause/resume, progress menu and notification controls |
-| 13 | Autostart | Windows registry startup toggle | Task Scheduler mode for unattended Windows hosts |
-| 14 | Awake mode | Optional Windows sleep prevention while actively mining | Power-state diagnostics and configurable behavior |
-| 15 | Startup errors | Native Windows error dialog for fatal startup and duplicate instance | Action buttons for port conflicts and opening logs |
-| 16 | Shortcuts | Dashboard buttons to open the data folder and log on Windows | Tray shortcuts and reveal individual files |
-| 17 | Resume recovery | Detect a long suspend gap and refresh Twitch state | Network-change hooks and measured reconnect backoff |
+| 12 | Notifications | Claim/webhook notifications in the activity feed | Templates and service presets |
+| 13 | Startup errors | Plain log/console errors for fatal startup and duplicate instance | Action buttons for port conflicts |
+| 14 | Resume recovery | Detect a long suspend gap and refresh Twitch state | Network-change hooks and measured reconnect backoff |
 
 ## Next milestone
 
 1. Add form-based dashboard sessions and a real browser logout (a CSRF-rotating disconnect action exists).
 2. Extend saved reward history with per-game mining time and verified export importers.
-3. Exercise Windows tray, autostart, sleep and startup-error behavior on packaged CI artifacts.
-4. Add notification service presets and clearer delivery history.
-5. Publish example monitoring configuration for Docker users.
+3. Add notification service presets and clearer delivery history.
+4. Publish example monitoring configuration for Docker users.
+
+> Removed when the project went Docker-only: Windows tray, autostart, awake mode,
+> native startup dialogs, open-data/open-log shortcuts, and PyInstaller/AppImage
+> packaging (former rows 12–16).

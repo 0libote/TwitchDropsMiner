@@ -5,10 +5,7 @@ __pycache__
 # Build and dist files
 /build
 /dist
-/*.exe
-/*.zip
 /*.tmp
-/Twitch Drops Miner
 # Dev files
 *.new
 /env
@@ -22,14 +19,7 @@ settings.json
 .env
 /OG/
 /lang/English.json
-# AppImage
-/AppDir
-/appimage-builder
-/appimage-build
-/*.AppImage
-/*.AppImage.zsync
 .DS_Store
-*.app
 /node_modules/
 # Bun text lockfile (bun.lock) is committed; binary lock is generated locally
 bun.lockb

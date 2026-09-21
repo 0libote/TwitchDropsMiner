@@ -149,8 +149,6 @@ function cloneSettings(values) {
     trayNotifications: values.trayNotifications,
     enableBadgesEmotes: values.enableBadgesEmotes,
     availableDropsCheck: values.availableDropsCheck,
-    autostart: values.autostart,
-    keepAwake: values.keepAwake,
     proxy: values.proxy,
     webhookUrl: values.webhookUrl || "",
   };
@@ -492,11 +490,6 @@ function settingsTemplate() {
           <div class="setting-row toggle-row"><div><strong>Claim notifications</strong><p>Record a notification whenever a drop is claimed.</p></div><label class="switch"><input type="checkbox" data-setting="trayNotifications" ${settingsDraft.trayNotifications ? "checked" : ""} aria-label="Show claim notifications"><span></span></label></div>
         </section>
         <section class="panel setting-section"><div class="panel-header"><div><h2>Webhook notifications</h2><p class="muted">Send claim notifications to your configured service</p></div></div><div class="setting-row"><div><label for="webhook-url"><strong>Webhook URL</strong></label><p>${state.system.webhookManagedByEnvironment ? "Managed by the launch environment." : "Save the URL before sending a test notification."}</p></div><input id="webhook-url" type="url" autocomplete="off" spellcheck="false" data-setting="webhookUrl" value="${esc(settingsDraft.webhookUrl)}" ${state.system.webhookManagedByEnvironment ? "disabled" : ""}></div><div class="panel-body"><button class="button secondary small" data-action="test-webhook" ${settingsDirty || (!settingsDraft.webhookUrl && !state.system.webhookManagedByEnvironment) ? "disabled" : ""}>Test notification</button></div></section>
-        ${state.system.platform.startsWith("Windows") ? `<section class="panel setting-section">
-          <div class="panel-header"><div><h2>Windows</h2><p class="muted">Desktop convenience and reliability</p></div></div>
-          <div class="setting-row toggle-row"><div><strong>Start with Windows</strong><p>Launch minimized to the system tray after sign-in.</p></div><label class="switch"><input type="checkbox" data-setting="autostart" ${settingsDraft.autostart ? "checked" : ""}><span></span></label></div>
-          <div class="setting-row toggle-row"><div><strong>Keep PC awake while mining</strong><p>Prevent system sleep only while a drop is active.</p></div><label class="switch"><input type="checkbox" data-setting="keepAwake" ${settingsDraft.keepAwake ? "checked" : ""}><span></span></label></div>
-        </section>` : ""}
         <section class="panel setting-section">
           <div class="panel-header"><div><h2>Network</h2><p class="muted">Usually best left at the defaults</p></div></div>
           <div class="setting-row"><div><label for="connection-quality"><strong>Connection tolerance</strong></label><p>Higher values give slow or unreliable networks more time.</p></div><div><input id="connection-quality" type="range" min="1" max="6" value="${settingsDraft.connectionQuality}" data-setting="connectionQuality"><div class="progress-meta"><span>Fast</span><output id="quality-output">${settingsDraft.connectionQuality} / 6</output><span>Tolerant</span></div></div></div>
@@ -515,6 +508,9 @@ function diagnosticsTemplate() {
   const socketTopics = state.websockets.reduce((sum, socket) => sum + (socket.topics || 0), 0);
   const lines = [...(state.messages || [])].reverse();
   const notifications = state.notifications || [];
+  const networkMessage = state.networkIssues?.length
+    ? "Requests are failing for " + esc(state.networkIssues.join(", ")) + "."
+    : "No repeated Twitch network failures have been detected.";
   return `
     <div class="diagnostic-grid">
       <article class="panel diagnostic-card"><span>Miner state</span><strong>${esc(state.activity || "Unknown")}</strong><small>${esc(state.status || "No status message")}</small></article>
@@ -528,7 +524,7 @@ function diagnosticsTemplate() {
       <div class="panel-header"><div><h2>Event log</h2><p class="muted">Newest events appear first</p></div><div class="button-row"><button class="button secondary small" type="button" data-copy-log>Copy log</button><a class="button secondary small" href="/api/diagnostics" download>Download</a></div></div>
       <div class="log" id="activity-log">${notifications.map(item => `<p class="notification"><strong>${esc(formatDate(item.time))} · ${esc(item.title)}</strong> ${esc(item.message)}</p>`).join("")}${lines.map(item => `<p><small>${esc(formatDate(item.time))}</small> ${esc(item.message || item)}</p>`).join("") || (!notifications.length ? "<p>Waiting for miner events…</p>" : "")}</div>
     </section>
-    <section class="panel side-note" style="margin-top:14px"><h3>Network health</h3><p>${state.networkIssues?.length ? `Requests are failing for ${esc(state.networkIssues.join(", "))}.` : "No repeated Twitch network failures have been detected."}</p><p class="muted">${esc(state.system.platform)} · Python ${esc(state.system.python)} · ${state.system.authenticationEnabled ? "Dashboard authentication enabled" : "Dashboard authentication disabled"}</p><div class="button-row" style="margin-top:12px"><a class="button secondary small" href="/api/export?stats=1" download>Export settings & stats</a>${state.system.platform.startsWith("Windows") ? '<button class="button secondary small" data-action="open-data">Open data folder</button><button class="button secondary small" data-action="open-log">Open log</button>' : ""}</div><label class="button quiet small" style="display:inline-block;margin-top:10px">Import settings<input type="file" accept="application/json" data-import-settings hidden></label></section>`;
+    <section class="panel side-note" style="margin-top:14px"><h3>Network health</h3><p>${networkMessage}</p><p class="muted">${esc(state.system.platform)} · Python ${esc(state.system.python)} · ${state.system.authenticationEnabled ? "Dashboard authentication enabled" : "Dashboard authentication disabled"}</p><div class="button-row" style="margin-top:12px"><a class="button secondary small" href="/api/export?stats=1" download>Export settings & stats</a></div><label class="button quiet small" style="display:inline-block;margin-top:10px">Import settings<input type="file" accept="application/json" data-import-settings hidden></label></section>`;
 }
 
 let historyOffset = 0;

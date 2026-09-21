@@ -16,12 +16,6 @@ dependencies = [
 dev = [
     "ruff==0.16.8",  # single source of truth; ci.yml reads this pin from pyproject
 ]
-desktop = [
-    # Windows system tray; imported lazily by platform_qol.
-    "Pillow",
-    "pystray",
-    "pywin32; sys_platform == 'win32'",
-]
 
 [tool.ruff]
 target-version = "py310"

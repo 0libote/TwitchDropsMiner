@@ -179,7 +179,7 @@ class BaseDrop:
             self._twitch.print(
                 _("status", "claimed_drop").format(drop=claim_text.replace('\n', ' '))
             )
-            self._twitch.gui.tray.notify(claim_text, _("gui", "tray", "notification_title"))
+            self._twitch.gui.notifier.notify(claim_text, _("gui", "tray", "notification_title"))
             if not was_claimed:
                 self._twitch.record_claim_history(self)
                 self._twitch.stats.claim()
