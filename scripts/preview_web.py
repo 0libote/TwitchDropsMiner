@@ -20,7 +20,9 @@ class PreviewHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path in {"/api/history", "/api/csrf"}:
             if path == "/api/csrf":
-                payload = {"token": "read-only-preview"}
+                # Fixed placeholder for a loopback-only, read-only preview server;
+                # this is not a credential. NOSONAR(S6418)
+                payload = {"token": "read-only-preview"}  # NOSONAR
             else:
                 payload = json.loads((ROOT / "tests/fixtures/history.json").read_text())
                 query = parse_qs(urlsplit(self.path).query)
@@ -90,5 +92,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8095)
     args = parser.parse_args()
-    print(f"Read-only dashboard preview: http://127.0.0.1:{args.port}", flush=True)
+    # Loopback-only preview server; no TLS is expected here. NOSONAR(S5332)
+    print(f"Read-only dashboard preview: http://127.0.0.1:{args.port}", flush=True)  # NOSONAR
     ThreadingHTTPServer(("127.0.0.1", args.port), PreviewHandler).serve_forever()

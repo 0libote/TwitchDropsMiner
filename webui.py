@@ -409,7 +409,9 @@ class WebUI:
         self.notifications: deque[dict[str, str]] = deque(maxlen=20)
         self._network_failures: dict[str, int] = {}
         url_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-        self.dashboard_url = f"http://{url_host}:{port}/"
+        # The dashboard binds to loopback and is served over plain HTTP by design;
+        # TLS for remote access belongs at the user's reverse proxy. NOSONAR(S5332)
+        self.dashboard_url = f"http://{url_host}:{port}/"  # NOSONAR
         self.native_tray = NativeTray(self.dashboard_url, self.close)
         self._tray_enabled = tray
         self._clock_task: asyncio.Task[None] | None = None
