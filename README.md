@@ -36,13 +36,12 @@ PyInstaller/AppImage packaging were removed when the project went Docker-only.
 
 ## Run from source (development only)
 
-Python 3.10 or newer is required. Production runs are Docker-only; source runs exist
-for development and dashboard preview work.
+Bun 1.4.2 or newer is required (pinned in `package.json:packageManager`).
+Production runs are Docker-only; source runs exist for development work.
 
 ```bash
-python -m venv env
-env/bin/pip install -r requirements-headless.txt
-env/bin/python main.py
+bun install
+TDM_DATA_DIR=./data bun src/main.ts
 ```
 
 The dashboard opens automatically. Twitch uses a device authorization flow: open the displayed
@@ -165,22 +164,26 @@ for every hostname requested by this container; an exact allowlist entry is the 
 
 ## Development
 
-The modern path deliberately uses the dependencies already central to the miner:
-
-- Python and `asyncio` for the engine and lifecycle.
-- `aiohttp` for Twitch networking and the dashboard server.
-- Plain HTML, CSS, and JavaScript with server-sent events for the UI.
-- Docker for the only supported production runtime.
-
-There is no frontend build, frontend framework, or second API server. SQLite ships with Python
-and needs no database service. Bun and pinned Playwright are used only for browser tests.
+The miner is TypeScript on Bun: engine, dashboard server and lifecycle live
+under `src/`, with plain HTML, CSS, and JavaScript (server-sent events) for
+the UI. Docker (`oven/bun` image) is the only supported production runtime.
+SQLite is built into Bun and needs no database service. Python remains in the
+repo as the upstream-tracking reference implementation (see below).
 
 Run the checks:
 
 ```bash
-env/bin/python -m unittest discover -s tests -v
-env/bin/python -m compileall -q .
-env/bin/python scripts/check_upstream.py --check
+bun run typecheck   # tsc --noEmit over src/, web/api-types.ts, scripts, tests
+bun test            # Bun-native unit tests (src/*.test.ts, 125 tests)
+bun run build       # Bun.build bundle check (output is gitignored web/dist/)
+bun audit           # JS supply-chain audit (also run in CI)
+```
+
+Run the miner from source (development only; production uses Docker):
+
+```bash
+bun install
+TDM_DATA_DIR=./data bun src/main.ts
 ```
 
 Browser checks (also required by CI):
@@ -188,10 +191,15 @@ Browser checks (also required by CI):
 ```bash
 bun install
 bunx --package playwright@1.62.1 playwright install --with-deps chromium # --with-deps required on Linux
-env/bin/python scripts/preview_web.py
+bun run preview                 # Bun.serve fixture preview on :8095
 # In another terminal:
 bun run test
 ```
+
+The browser suite uses fictional fixtures and intercepts API actions; it never controls a live
+miner. The Python reference suite (`env/bin/python -m unittest discover -s tests`,
+`compileall`, `scripts/check_upstream.py --check`) still runs in CI against the
+upstream-tracking implementation.
 
 The browser suite uses fictional fixtures and intercepts API actions; it never controls a live
 miner. Python tests exercise the real request validation and persistence against temporary data.

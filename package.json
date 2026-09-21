@@ -3,9 +3,19 @@
   "private": true,
   "packageManager": "bun@1.4.2",
   "scripts": {
-    "test": "bun tests/test_web_theme.cjs && bun tests/test_web_ui.cjs"
+    "test": "bun test && bun tests/test_web_theme.cjs && bun tests/test_web_ui.cjs",
+    "test:unit": "bun test",
+    "test:theme": "bun tests/test_web_theme.cjs",
+    "test:browser": "bun tests/test_web_ui.cjs",
+    "typecheck": "tsc --noEmit",
+    "build": "bun scripts/build-web.ts",
+    "preview": "bun scripts/preview-web.ts",
+    "preview:py": "python scripts/preview_web.py",
+    "audit": "bun audit"
   },
   "devDependencies": {
-    "playwright": "1.62.1"
+    "bun-types": "1.4.2",
+    "playwright": "1.62.1",
+    "typescript": "5.9.2"
   }
 }
