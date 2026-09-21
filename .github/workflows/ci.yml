@@ -40,10 +40,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - run: pip install -r requirements-headless.txt pip-audit
+      - run: pip install pip-audit
       # These must be able to fail the build: no "|| true" masking.
+      # pip-audit requires a target: audit the declared requirements (its dependency
+      # resolver needs pip, so --disable-pip cannot be combined with -r here).
       - name: Audit Python dependencies
-        run: pip-audit --disable-pip --local
+        run: |
+          pip-audit -r requirements-headless.txt
+          pip-audit -r requirements.txt
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2 # pinned to match packageManager in package.json
