@@ -16,8 +16,8 @@ from webui import WebUI
 def miner_settings():
     return SimpleNamespace(priority=['Original'], exclude=set(),
         priority_mode=None, connection_quality=1, tray_notifications=True,
-        enable_badges_emotes=False, available_drops_check=False, keep_awake=False,
-        autostart_tray=False, proxy=URL(), webhook_url='', save=Mock())
+        enable_badges_emotes=False, available_drops_check=False,
+        proxy=URL(), webhook_url='', save=Mock())
 
 
 class WebControlTests(unittest.IsolatedAsyncioTestCase):
@@ -76,13 +76,13 @@ class WebControlTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_import_uses_same_validation(self):
         response = await self.client.post('/api/import',
-            json={'settings': {'priority': ['Changed'], 'keepAwake': 'false'}}, headers=self.headers)
+            json={'settings': {'priority': ['Changed'], 'trayNotifications': 'false'}}, headers=self.headers)
         self.assertEqual(response.status, 400)
         self.assertEqual(self.miner.settings.priority, ['Original'])
         response = await self.client.put('/api/settings',
-            json={'priority': ['Changed'], 'keepAwake': True}, headers=self.headers)
+            json={'priority': ['Changed'], 'trayNotifications': False}, headers=self.headers)
         self.assertEqual(response.status, 200)
-        self.assertTrue(self.miner.settings.keep_awake)
+        self.assertFalse(self.miner.settings.tray_notifications)
         self.miner.settings.save.assert_called_once()
 
     async def test_history_is_scoped_to_current_account(self):

@@ -17,13 +17,11 @@ class SettingsFile(TypedDict):
     dark_mode: bool
     exclude: set[str]
     priority: list[str]
-    autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
     enable_badges_emotes: bool
     available_drops_check: bool
     priority_mode: PriorityMode
-    keep_awake: bool
     webhook_url: str
 
 
@@ -32,14 +30,12 @@ default_settings: SettingsFile = {
     "priority": [],
     "exclude": set(),
     "dark_mode": False,
-    "autostart_tray": False,
     "connection_quality": 1,
     "language": DEFAULT_LANG,
     "tray_notifications": True,
     "enable_badges_emotes": False,
     "available_drops_check": False,
     "priority_mode": PriorityMode.ENDING_SOONEST,
-    "keep_awake": False,
     "webhook_url": "",
 }
 
@@ -47,7 +43,6 @@ default_settings: SettingsFile = {
 class Settings:
     # from args
     log: bool
-    tray: bool
     dump: bool
     # args properties
     debug_ws: int
@@ -59,13 +54,11 @@ class Settings:
     dark_mode: bool
     exclude: set[str]
     priority: list[str]
-    autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
     enable_badges_emotes: bool
     available_drops_check: bool
     priority_mode: PriorityMode
-    keep_awake: bool
 
     PASSTHROUGH = ("_settings", "_args", "_altered")
 

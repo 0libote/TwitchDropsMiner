@@ -25,7 +25,7 @@ from collections.abc import Callable, Mapping
 from yarl import URL
 
 from exceptions import ExitRequest, ReloadRequest
-from constants import IS_PACKAGED, JsonType, PriorityMode
+from constants import JsonType, PriorityMode
 from constants import _resource_path as resource_path  # noqa
 
 
@@ -293,29 +293,7 @@ def json_save(path: Path, contents: Mapping[Any, Any], *, sort: bool = False) ->
 
 
 def webopen(url: URL | str):
-    url_str = str(url)
-    if IS_PACKAGED and sys.platform == "linux":
-        # https://pyinstaller.org/en/stable/
-        # runtime-information.html#ld-library-path-libpath-considerations
-        # NOTE: All 4 cases need to be handled here: either of the two values can be there or not.
-        ld_env = "LD_LIBRARY_PATH"
-        ld_path_curr = os.environ.get(ld_env)
-        ld_path_orig = os.environ.get(f"{ld_env}_ORIG")
-        if ld_path_orig is not None:
-            os.environ[ld_env] = ld_path_orig
-        elif ld_path_curr is not None:
-            # pop current
-            os.environ.pop(ld_env)
-
-        webbrowser.open_new_tab(url_str)
-
-        if ld_path_curr is not None:
-            os.environ[ld_env] = ld_path_curr
-        elif ld_path_orig is not None:
-            # pop original
-            os.environ.pop(ld_env)
-    else:
-        webbrowser.open_new_tab(url_str)
+    webbrowser.open_new_tab(str(url))
 
 
 class ExponentialBackoff:

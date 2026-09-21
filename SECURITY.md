@@ -5,10 +5,11 @@
 | Version | Supported |
 | ------- | --------- |
 | `main` (pre-release) | ✅ |
-| Latest prerelease (`latest` tag) | ✅ |
-| Older prereleases | ❌ |
+| Latest container image (`ghcr.io/0libote/twitchdropsminer:latest`) | ✅ |
+| Older images | ❌ |
 
-This is a pre-release fork. Security fixes are applied to `main` and included in the next `latest` prerelease and container image.
+This is a pre-release fork. Security fixes are applied to `main` and included in the next
+container image. There are no desktop builds.
 
 ## Reporting a Vulnerability
 

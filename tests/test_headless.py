@@ -78,10 +78,10 @@ class HeadlessImportTests(unittest.TestCase):
 
         twitch = SimpleNamespace(settings=SimpleNamespace(tray_notifications=False))
         ui = WebUI(twitch)
-        ui.tray.notify("Claimed", "Drop")
+        ui.notifier.notify("Claimed", "Drop")
         self.assertEqual(list(ui.notifications), [])
         twitch.settings.tray_notifications = True
-        ui.tray.notify("Claimed", "Drop")
+        ui.notifier.notify("Claimed", "Drop")
         notification = list(ui.notifications)[0]
         self.assertEqual(notification["title"], "Drop")
         self.assertEqual(notification["message"], "Claimed")
@@ -189,7 +189,7 @@ class WebRoutingTests(unittest.IsolatedAsyncioTestCase):
         settings = SimpleNamespace(
             priority=[], exclude=set(), priority_mode=SimpleNamespace(name="PRIORITY_ONLY"),
             connection_quality=1, tray_notifications=True, enable_badges_emotes=False,
-            available_drops_check=False, autostart_tray=False, keep_awake=False, proxy="",
+            available_drops_check=False, proxy="",
         )
         stats = Mock()
         stats.snapshot.return_value = {

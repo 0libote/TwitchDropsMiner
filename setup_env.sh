@@ -27,10 +27,10 @@ fi
 
 # Activate the virtual environment and install requirements
 echo
-echo "Installing requirements.txt..."
+echo "Installing requirements-headless.txt..."
 "$dirpath/env/bin/python" -m pip install -U pip
 "$dirpath/env/bin/pip" install wheel
-"$dirpath/env/bin/pip" install -r "$dirpath/requirements.txt"
+"$dirpath/env/bin/pip" install -r "$dirpath/requirements-headless.txt"
 if [ $? -ne 0 ]; then
     echo
     echo "Failed to install requirements."

@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from multiprocessing import freeze_support
-
 
 if __name__ == "__main__":
-    freeze_support()
-
     import argparse
     import asyncio
     import logging
@@ -46,7 +42,6 @@ if __name__ == "__main__":
         _debug_ws: bool
         _debug_gql: bool
         log: bool
-        tray: bool
         dump: bool
         host: str
         port: int
@@ -88,7 +83,6 @@ if __name__ == "__main__":
         help="write logs to the data directory",
     )
     parser.add_argument("--dump", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--tray", action="store_true", help="start minimized with a tray icon")
     parser.add_argument(
         "--host",
         default=os.environ.get("TDM_HOST", "127.0.0.1"),
@@ -142,17 +136,15 @@ if __name__ == "__main__":
             WebUI,
             host=args.host,
             port=args.port,
-            open_browser=not args.no_browser and not args.tray,
-            tray=args.tray,
+            open_browser=not args.no_browser,
         )
         client = Twitch(settings, ui_factory=ui_factory)
 
         loop = asyncio.get_running_loop()
         installed_signals: list[signal.Signals] = []
-        if sys.platform != "win32":
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                loop.add_signal_handler(sig, client.gui.close)
-                installed_signals.append(sig)
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, client.gui.close)
+            installed_signals.append(sig)
 
         exit_status = 0
 
@@ -203,9 +195,6 @@ if __name__ == "__main__":
         except Exception:
             exit_status = 1
             fatal_error = getattr(client.gui, "fatal_error", None)
-            if sys.platform == "win32":
-                from platform_qol import show_startup_error
-                show_startup_error(str(fatal_error or "Fatal miner error. See log.txt for details."))
             if fatal_error:
                 logger.critical("Dashboard failed:\n%s", traceback.format_exc())
                 client.gui.close()
@@ -224,21 +213,15 @@ if __name__ == "__main__":
             await client.shutdown()
 
         if not client.gui.close_requested:
-            client.gui.tray.change_icon("error")
             client.print(_("status", "terminated"))
             client.gui.status.update(_("gui", "status", "terminated"))
-            client.gui.grab_attention(sound=True)
         await client.gui.wait_until_closed()
         client.save(force=True)
         client.gui.stop()
-        client.gui.close_window()
         return exit_status
 
     locked, lock_handle = lock_file(LOCK_PATH)
     if not locked:
-        if sys.platform == "win32":
-            from platform_qol import show_startup_error
-            show_startup_error("Twitch Drops Miner is already running for this data directory.")
         parser.error("Twitch Drops Miner is already running for this data directory.")
     try:
         raise SystemExit(asyncio.run(run()))

@@ -1,6 +1,6 @@
 # Dashboard design
 
-The dashboard should feel like a small, well-made game library. Its first job is to answer what reward is being earned, how far along it is, and what happens next. It is the same frontend in Docker, desktop builds and source runs.
+The dashboard should feel like a small, well-made game library. Its first job is to answer what reward is being earned, how far along it is, and what happens next. It is the same frontend in Docker and source runs.
 
 ## Design decisions
 
@@ -11,7 +11,7 @@ The dashboard should feel like a small, well-made game library. Its first job is
 - Keep actions predictable across routes. Preserve keyboard focus and unsaved form input during live state updates. Disconnection must visibly qualify the last received state.
 - Use local system fonts and inline SVG icons. The frontend has no font, icon or framework CDN dependency. Missing Twitch artwork leaves a gift placeholder.
 
-Graphite uses charcoal and brass; Paper uses warm neutrals and terracotta; Midnight uses navy and pale blue; Evergreen uses forest greens and sage. System follows the operating system. Preferences remain local to the browser and apply before the stylesheet loads. All five choices are available in Settings, with a quick selector in the desktop sidebar.
+Graphite uses charcoal and brass; Paper uses warm neutrals and terracotta; Midnight uses navy and pale blue; Evergreen uses forest greens and sage. System follows the operating system. Preferences remain local to the browser and apply before the stylesheet loads. All five choices are available in Settings, with a quick selector in the sidebar.
 
 ## Research
 

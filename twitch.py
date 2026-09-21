@@ -769,13 +769,13 @@ class Twitch:
                 if self.settings.dump:
                     self.gui.close()
                     continue
-                self.gui.tray.change_icon("idle")
+                self.gui.notifier.set_activity("idle")
                 self.gui.status.update(_("gui", "status", "idle"))
                 self.stop_watching()
                 # clear the flag and wait until it's set again
                 self._state_change.clear()
             elif self._state is State.INVENTORY_FETCH:
-                self.gui.tray.change_icon("maint")
+                self.gui.notifier.set_activity("maint")
                 # ensure the websocket is running
                 await self.websocket.start()
                 await self.fetch_inventory()
@@ -1017,7 +1017,7 @@ class Twitch:
             elif self._state is State.RESTART:
                 raise ReloadRequest()
             elif self._state is State.EXIT:
-                self.gui.tray.change_icon("pickaxe")
+                self.gui.notifier.set_activity("pickaxe")
                 self.gui.status.update(_("gui", "status", "exiting"))
                 # we've been requested to exit the application
                 break
@@ -1183,7 +1183,7 @@ class Twitch:
         previous = self.watching_channel.get_with_default(None)
         if previous is None or previous.id != channel.id:
             self.stats.increment("channel_switches")
-        self.gui.tray.change_icon("active")
+        self.gui.notifier.set_activity("active")
         self.gui.channels.set_watching(channel)
         self.watching_channel.set(channel)
         if update_status:

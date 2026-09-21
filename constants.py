@@ -19,9 +19,11 @@ if TYPE_CHECKING:
     from typing import TypeAlias
 
 
-# True if we're running from a built EXE (or a Linux AppImage), False inside a dev build
-IS_APPIMAGE = "APPIMAGE" in os.environ and os.path.exists(os.environ["APPIMAGE"])
-IS_PACKAGED = hasattr(sys, "_MEIPASS") or IS_APPIMAGE
+# Docker-only: there are no packaged desktop builds (PyInstaller/AppImage), so
+# resources always live next to the source tree and persistent state lives in
+# TDM_DATA_DIR (as set by the Dockerfile/compose) or the working directory.
+# IS_PACKAGED is kept as an always-False alias for translate.py.
+IS_PACKAGED = False
 # logging special levels
 CALL: int = logging.INFO - 1
 logging.addLevelName(CALL, "CALL")
@@ -29,17 +31,9 @@ def _resource_path(relative_path: Path | str) -> Path:
     """
     Get an absolute path to a bundled resource.
 
-    Works for dev and for PyInstaller.
+    Docker and source runs serve files from the working directory.
     """
-    if IS_APPIMAGE:
-        base_path = Path(sys.argv[0]).resolve().parent
-    elif IS_PACKAGED:
-        # PyInstaller's folder where the one-file app is unpacked
-        meipass: str = getattr(sys, "_MEIPASS")
-        base_path = Path(meipass)
-    else:
-        base_path = WORKING_DIR
-    return base_path.joinpath(relative_path)
+    return WORKING_DIR.joinpath(relative_path)
 
 
 def _merge_vars(base_vars: JsonType, vars: JsonType) -> None:
@@ -67,25 +61,12 @@ def _merge_vars(base_vars: JsonType, vars: JsonType) -> None:
 
 
 # Base Paths
-if IS_APPIMAGE:
-    SELF_PATH = Path(os.environ["APPIMAGE"]).resolve()
-else:
-    # NOTE: pyinstaller will set sys.argv[0] to its own executable when building
-    # detect that and use __file__ and main.py redirection instead
-    SELF_PATH = Path(sys.argv[0]).resolve()
-    if SELF_PATH.stem == "pyinstaller":
-        SELF_PATH = Path(__file__).with_name("main.py").resolve()
+SELF_PATH = Path(__file__).with_name("main.py").resolve()
 WORKING_DIR = SELF_PATH.parent
-# Persistent state lives outside packaged application bundles. Source runs keep
-# the upstream behavior unless TDM_DATA_DIR is explicitly set (as in Docker).
+# Persistent state lives in TDM_DATA_DIR (as in Docker); source runs without it
+# keep the upstream behavior of storing state next to the code.
 if data_dir := os.environ.get("TDM_DATA_DIR"):
     DATA_DIR = Path(data_dir).expanduser().resolve()
-elif IS_PACKAGED and sys.platform == "win32":
-    DATA_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home()), "Twitch Drops Miner Next")
-elif IS_PACKAGED and sys.platform == "darwin":
-    DATA_DIR = Path.home() / "Library/Application Support/Twitch Drops Miner Next"
-elif IS_PACKAGED:
-    DATA_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"), "tdm-next")
 else:
     DATA_DIR = WORKING_DIR
 DATA_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)

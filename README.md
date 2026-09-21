@@ -1,8 +1,8 @@
 # Twitch Drops Miner Next
 
 A cleaner, web-first community fork of
-[DevilXD/TwitchDropsMiner](https://github.com/DevilXD/TwitchDropsMiner) for Windows, macOS,
-and Docker.
+[DevilXD/TwitchDropsMiner](https://github.com/DevilXD/TwitchDropsMiner),
+packaged as a Docker container.
 
 > [!IMPORTANT]
 > This is an independent fork, not a Twitch product and not an official DevilXD release. The
@@ -10,20 +10,18 @@ and Docker.
 > DevilXD and the upstream contributors. See [NOTICE.md](NOTICE.md).
 
 The project keeps upstream's low-bandwidth Twitch Drops engine and replaces the desktop-only
-Tkinter experience with one responsive dashboard. Desktop builds open it locally; Docker serves
-the same UI.
+Tkinter experience with one responsive dashboard, served from the container.
 
 ## Current status
 
-The web dashboard and headless runtime are functional, but **Next is still pre-release software**.
-Use the original upstream release if you need its most established desktop experience today.
+The web dashboard and container runtime are functional, but **Next is still pre-release
+software**. There are no desktop builds: Windows tray, autostart, sleep prevention, and
+PyInstaller/AppImage packaging were removed when the project went Docker-only.
 
 | Mode | Experience | Persistent data |
 | --- | --- | --- |
-| Windows | Packaged folder + local dashboard | `%LOCALAPPDATA%\Twitch Drops Miner Next` |
-| macOS | Packaged app + local dashboard | `~/Library/Application Support/Twitch Drops Miner Next` |
 | Docker | Hosted dashboard on port `8080` | `/data` volume |
-| Source | Local dashboard at `127.0.0.1:8080` | Repository directory or `TDM_DATA_DIR` |
+| Source | Local dashboard at `127.0.0.1:8080` (development only) | Repository directory or `TDM_DATA_DIR` |
 
 ## What it does
 
@@ -36,26 +34,15 @@ Use the original upstream release if you need its most established desktop exper
 - Keeps a permanent, account-specific SQLite reward history with search and game filters.
 - Tracks upstream engine changes without silently applying volatile Twitch API updates.
 
-## Run from source
+## Run from source (development only)
 
-Python 3.10 or newer is required.
+Python 3.10 or newer is required. Production runs are Docker-only; source runs exist
+for development and dashboard preview work.
 
 ```bash
 python -m venv env
-```
-
-On macOS or Linux:
-
-```bash
 env/bin/pip install -r requirements-headless.txt
 env/bin/python main.py
-```
-
-On Windows PowerShell:
-
-```powershell
-env\Scripts\pip install -r requirements-headless.txt
-env\Scripts\python main.py
 ```
 
 The dashboard opens automatically. Twitch uses a device authorization flow: open the displayed
@@ -67,7 +54,6 @@ Useful options:
 --host ADDRESS       Bind address; defaults to 127.0.0.1
 --port PORT          Dashboard port; defaults to 8080
 --no-browser         Do not launch a browser automatically
---tray               Start minimized with a Windows system-tray icon
 --log                Write log.txt in the data directory
 ```
 
@@ -83,8 +69,8 @@ TDM_ALLOWED_HOSTS=a,b     Extra hosts allowed to reach the dashboard (comma-sepa
 
 Choose **Settings → Appearance** for Graphite (charcoal and brass), Paper (warm light),
 Midnight (deep blue), Evergreen (forest and sage), or your system’s light/dark theme.
-The desktop sidebar also has a quick appearance selector.
-Appearance is saved per browser and applies to Docker and desktop dashboards.
+The sidebar also has a quick appearance selector.
+Appearance is saved per browser.
 
 Pause remains in effect through channel changes, refreshes and miner restarts. Use **Resume
 mining** to continue. The mining plan shows the engine's selected games and blocked preferences;
@@ -104,20 +90,9 @@ The dashboard exposes `/healthz` for liveness, `/readyz` for authenticated Twitc
 `/api/diagnostics` for redacted runtime details, and `/metrics` for basic Prometheus counters.
 See [ROADMAP.md](ROADMAP.md) for the current operational QoL feature status and planned upgrades.
 
-## Desktop builds
-
-Download the latest version from the single
-[Latest prerelease](https://github.com/0libote/TwitchDropsMiner/releases/tag/latest). Choose the archive for
-Windows x64, macOS Apple Silicon, or macOS Intel. Each archive is started and health-checked on
-the matching hosted runner before publication.
-
-Pushing a `v*` version tag updates that prerelease and moves its `latest` tag to the tested commit.
-The version tag remains available for source history, while older prerelease entries are removed.
-The apps are not code-signed or notarized yet, so Windows SmartScreen or macOS Gatekeeper may show
-an unknown-publisher warning. Signing should be added only after the product name and publisher
-identity are final.
-
 ## Run with Docker
+
+Docker is the only supported production runtime.
 
 Published images support `linux/amd64` and `linux/arm64`. Run the latest image:
 
@@ -195,7 +170,7 @@ The modern path deliberately uses the dependencies already central to the miner:
 - Python and `asyncio` for the engine and lifecycle.
 - `aiohttp` for Twitch networking and the dashboard server.
 - Plain HTML, CSS, and JavaScript with server-sent events for the UI.
-- PyInstaller for Windows and macOS artifacts.
+- Docker for the only supported production runtime.
 
 There is no frontend build, frontend framework, or second API server. SQLite ships with Python
 and needs no database service. Bun and pinned Playwright are used only for browser tests.
