@@ -20,13 +20,9 @@
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
+import { PriorityMode } from "./twitchProtocol.ts";
 
-/** Matches `PriorityMode` in `constants.py` (values must stay in sync). */
-export enum PriorityMode {
-  PRIORITY_ONLY = 0,
-  ENDING_SOONEST = 1,
-  LOW_AVBL_FIRST = 2,
-}
+export { PriorityMode };
 
 export interface TaggedValue {
   __type: string;

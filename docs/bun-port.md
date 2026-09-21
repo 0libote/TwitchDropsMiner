@@ -24,8 +24,8 @@ parity; `src/` modules are developed and tested side-by-side.
 | `utils.py` `ExponentialBackoff` | `src/backoff.ts` | ✅ done | Exact semantics incl. no-step-on-cap |
 | `stats.py` | `src/stats.ts` | ✅ done | Same defaults, stamps, snapshot shape |
 | `history.py` | `src/history.ts` | ✅ done | Same schema/SQL; engine objects are structural interfaces for now |
-| `constants.py` (GQL queries, topics, limits) | `src/twitchProtocol.ts` | next | Pure data, trivially portable |
-| `settings.py` | `src/settings.ts` | next | Thin wrapper over `jsonStore` |
+| `constants.py` (GQL queries, topics, limits) | `src/twitchProtocol.ts` | ✅ done | All 15 query hashes/structures and agent lists verified against Python |
+| `settings.py` | `src/settings.ts` | ✅ done | Same defaults/merge/CLI-overlay; reads Python-written `settings.json` |
 | `channel.py`, `inventory.py` (models) | `src/models.ts` | phase 2 | Needs GQL response typing |
 | `websocket.py` | `src/websocket.ts` | phase 2 | Bun native WebSocket client |
 | `twitch.py` (engine) | `src/engine.ts` | phase 2 | The big one: state machine, GQL, watch loop |
@@ -36,8 +36,9 @@ parity; `src/` modules are developed and tested side-by-side.
 
 ## Phases
 
-1. **Foundations (this PR):** `jsonStore`, `backoff`, `stats`, `history` + 25
-   `bun:test` tests, all cross-checked against Python behavior.
+1. **Foundations (done):** `jsonStore`, `backoff`, `stats`, `history`,
+   `twitchProtocol`, `settings` + 39 `bun:test` tests, all cross-checked
+   against Python behavior.
 2. **Engine:** protocol data, models, websocket, engine, server. Dashboard
    runs against the TS server behind a flag; Playwright suite runs against
    both.

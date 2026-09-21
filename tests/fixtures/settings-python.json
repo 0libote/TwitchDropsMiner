@@ -1,0 +1,26 @@
+{
+    "available_drops_check": true,
+    "connection_quality": 2,
+    "dark_mode": false,
+    "enable_badges_emotes": false,
+    "exclude": {
+        "__type": "set",
+        "data": [
+            "Fortnite"
+        ]
+    },
+    "language": "English",
+    "priority": [
+        "Just Chatting"
+    ],
+    "priority_mode": {
+        "__type": "PriorityMode",
+        "data": 1
+    },
+    "proxy": {
+        "__type": "URL",
+        "data": "http://localhost:3128"
+    },
+    "tray_notifications": true,
+    "webhook_url": ""
+}
