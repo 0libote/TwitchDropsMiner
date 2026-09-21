@@ -20,7 +20,7 @@
  * - `MAX_INT` is `Number.MAX_SAFE_INTEGER`; trigger sets hold epoch millis.
  */
 
-import { AsyncEvent, RateLimiter, chunk, sleep } from "./async.ts";
+import { AsyncEvent, AwaitableValue, RateLimiter, chunk, sleep } from "./async.ts";
 import { AuthState } from "./auth.ts";
 import { CookieJar } from "./cookies.ts";
 import { CaptchaRequired, ExitRequest, GQLException, LoginException, MinerException, ReloadRequest, RequestException } from "./errors.ts";
@@ -78,6 +78,8 @@ export interface EngineOptions {
   transport?: FetchImpl;
   pubsubUrl?: string;
   logger?: (level: string, message: string) => void;
+  /** Shared shutdown latch (the server passes its own so both sides agree). */
+  closeEvent?: AsyncEvent;
 }
 
 interface GqlDocument {
@@ -96,8 +98,8 @@ export class Twitch {
   lastConfirmedProgressAt: number | null = null;
   wantedGames: Game[] = [];
   inventory: DropsCampaign[] = [];
-  readonly watchingChannel = new AwaitableValueImpl<Channel>();
-  readonly closeEvent = new AsyncEvent();
+  readonly watchingChannel = new AwaitableValue<Channel>();
+  readonly closeEvent: AsyncEvent;
   readonly clientInfo: ClientInfo & { userAgent: string };
   readonly cookies: CookieJar;
   readonly cookiesPath: string;
@@ -123,6 +125,7 @@ export class Twitch {
     this.dataDir = dataDir;
     this.settings = settings;
     this.gui = gui;
+    this.closeEvent = options.closeEvent ?? new AsyncEvent();
     this.logger = options.logger ?? ((level, message) => console.log(`[${level}] ${message}`));
     const clientType = options.clientType ?? CLIENT_TYPES.ANDROID_APP;
     const agents = clientType.userAgents;
@@ -274,6 +277,10 @@ export class Twitch {
 
   waitUntilLogin(): Promise<true> {
     return this.auth.waitUntilLogin();
+  }
+
+  get websocketSockets(): Array<{ connected: boolean }> {
+    return this.websocket.websockets.map((socket) => ({ connected: socket.connected }));
   }
 
   getAuthState(): AuthState {
@@ -1161,40 +1168,3 @@ function kindOf(value: unknown): string {
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-class AwaitableValueImpl<T> {
-  private value: T | undefined;
-  private event = false;
-  private waiters: Array<() => void> = [];
-
-  hasValue(): boolean {
-    return this.event;
-  }
-
-  getWithDefault<D>(defaultValue: D): T | D {
-    return this.event ? (this.value as T) : defaultValue;
-  }
-
-  async get(): Promise<T> {
-    if (this.event) return this.value as T;
-    await new Promise<void>((resolve) => {
-      this.waiters.push(() => resolve());
-    });
-    return this.value as T;
-  }
-
-  set(value: T): void {
-    this.value = value;
-    this.event = true;
-    const waiters = this.waiters.splice(0);
-    for (const wake of waiters) wake();
-  }
-
-  clear(): void {
-    this.event = false;
-  }
-}
-
-export type { RequestOptions };
-void CaptchaRequired;
-void LoginException;

@@ -49,6 +49,14 @@ const STRINGS: Record<string, Record<string, string>> = {
     logging_in: "Logging in...",
     logged_in: "Logged in",
   },
+  "gui.websocket": {
+    initializing: "Initializing...",
+    connected: "Connected",
+    disconnected: "Disconnected",
+    connecting: "Connecting...",
+    disconnecting: "Disconnecting...",
+    reconnecting: "Reconnecting...",
+  },
 };
 
 export function translate(section: string, key: string, subkey?: string): string {
