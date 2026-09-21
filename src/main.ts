@@ -39,7 +39,7 @@ function parseArgs(argv: string[]): Cli {
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === "-v") cli.verbose += 1;
+    if (/^-v+$/.test(arg)) cli.verbose += arg.length - 1;
     else if (arg === "--log") cli.log = true;
     else if (arg === "--dump") cli.dump = true;
     else if (arg === "--no-browser") cli.noBrowser = true;

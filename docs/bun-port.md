@@ -27,22 +27,21 @@ parity; `src/` modules are developed and tested side-by-side.
 | `constants.py` (GQL queries, topics, limits) | `src/twitchProtocol.ts` | ✅ done | All 15 query hashes/structures and agent lists verified against Python |
 | `settings.py` | `src/settings.ts` | ✅ done | Same defaults/merge/CLI-overlay; reads Python-written `settings.json` |
 | `channel.py`, `inventory.py` (models) | `src/models.ts` (+`utils.ts`, `errors.ts`) | ✅ done | 29 tests; `EngineLike` interface stands in for the engine |
-| `utils.py` async (`AwaitableValue`, `chunk`, `create_nonce`) | `src/async.ts` | ✅ done | `RateLimiter` moves with the engine |
-| `websocket.py` | `src/websocket.ts` | ✅ done | Bun-native sockets; same backoff/ping/topic/pool rules, tested live |
+| `utils.py` async (`AwaitableValue`, `chunk`, `create_nonce`, `RateLimiter`) | `src/async.ts` | ✅ done | Tested alongside websocket/engine |
+| `websocket.py` | `src/websocket.ts` | ✅ done | Bun-native sockets; same rules, tested live |
 | `twitch.py` (auth + engine) | `src/auth.ts`, `src/engine.ts` (+`cookies.ts`, `http.ts`, `i18n.ts`) | ✅ done | 21 tests on scripted transport; JSON cookies (one re-login); `EngineGui` stands in for the server |
-| `webui.py` (dashboard server) | `src/server.ts` | phase 2 | `Bun.serve()` routes + SSE; serve `web/` |
-| `main.py` (CLI/lifecycle) | `src/main.ts` | phase 3 | Args, signals, lock file |
-| `translate.py`, `lang/*.json` | reuse as-is | phase 3 | Load JSON directly, no port needed |
-| `exceptions.py` | inline error classes | phase 2 | Trivial, port with engine |
+| `webui.py` (dashboard server) | `src/server.ts` (+`version.ts`) | ✅ done | Same routes/rules/snapshot; 18 tests incl. live SSE |
+| `main.py` (CLI/lifecycle) | `src/main.ts` | ✅ done | Same flags/env; PID lock instead of OS file locks |
+| `translate.py`, `lang/*.json` | `src/i18n.ts` (engine subset) | ✅ done | Full locale switching not ported; strings identical |
+| `exceptions.py` | `src/errors.ts` | ✅ done | Same hierarchy + `received` flag |
 
 ## Phases
 
 1. **Foundations (done):** `jsonStore`, `backoff`, `stats`, `history`,
-   `twitchProtocol`, `settings` + 39 `bun:test` tests, all cross-checked
-   against Python behavior.
-2. **Engine:** protocol data, models, websocket, engine, server. Dashboard
-   runs against the TS server behind a flag; Playwright suite runs against
-   both.
-3. **Cutover:** `Dockerfile` switches to `oven/bun`, Python becomes the
-   fallback for one release, then is removed with `requirements*.txt`,
-   `uv.lock`, and the Python CI matrix.
+   `twitchProtocol`, `settings`, all cross-checked against Python behavior.
+2. **Engine (done):** models, websocket, auth, engine, server, CLI — 139
+   `bun:test` tests plus a full-stack boot test; Playwright suite runs
+   against either backend unchanged.
+3. **Cutover (this change):** `Dockerfile` switches to `oven/bun`.
+   Python stays in the repo as the upstream-tracking reference and its
+   test matrix keeps running; the shipped image is Bun-only.
