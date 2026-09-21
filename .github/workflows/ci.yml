@@ -24,7 +24,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install -r requirements-headless.txt ruff==0.16.6
+      # Read the ruff pin from pyproject.toml so the version lives in one place and
+      # Dependabot's dev-extra bump is authoritative (no duplicate pin in CI).
+      - name: Install dependencies and lint tooling
+        run: |
+          pip install -r requirements-headless.txt
+          ruff_pin=$(sed -n 's/.*"ruff==\([^"]*\)".*/\1/p' pyproject.toml)
+          pip install "ruff==$ruff_pin"
       - name: Validate Python and translations
         run: |
           ruff check .
