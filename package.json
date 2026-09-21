@@ -8,6 +8,9 @@
     "test:theme": "bun tests/test_web_theme.cjs",
     "test:browser": "bun tests/test_web_ui.cjs",
     "typecheck": "tsc --noEmit",
+    "build": "bun scripts/build-web.ts",
+    "preview": "bun scripts/preview-web.ts",
+    "preview:py": "python scripts/preview_web.py",
     "audit": "bun audit"
   },
   "devDependencies": {
