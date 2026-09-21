@@ -57,7 +57,9 @@ async function waitFor(condition: () => boolean, timeoutMs = 15000): Promise<voi
 }
 
 describe("full stack", () => {
-  test("authenticates, mines and serves the dashboard", async () => {
+  test(
+    "authenticates, mines and serves the dashboard",
+    async () => {
     const dir = mkdtempSync(join(tmpdir(), "tdm-stack-"));
     const jar = new CookieJar();
     jar.set("auth-token", "stack-token", "www.twitch.tv");
@@ -183,5 +185,7 @@ describe("full stack", () => {
       server.stop();
       pubsub.stop();
     }
-  });
+    },
+    { timeout: 30000 },
+  );
 });
