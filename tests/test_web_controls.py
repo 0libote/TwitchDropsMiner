@@ -46,9 +46,9 @@ class WebControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         self.miner.resume.assert_called_once()
 
-    async def test_local_host_validation_and_explicit_proxy_origin(self):
+    async def test_any_host_and_explicit_proxy_origin(self):
         response = await self.client.get('/api/csrf', headers={'Host': 'untrusted.example'})
-        self.assertEqual(response.status, 403)
+        self.assertEqual(response.status, 200)
         with patch.dict('os.environ', {'TDM_PUBLIC_URL': 'https://miner.example'}):
             response = await self.client.post('/api/actions/pause',
                 headers={**self.headers, 'Origin': 'https://miner.example'})

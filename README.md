@@ -63,7 +63,6 @@ TDM_LOG=1                 Enable the persistent log
 TDM_WEB_TOKEN=secret      Protect the dashboard with HTTP Basic auth (user: tdm)
 TDM_WEBHOOK_URL=https://  Send claim, network and watchdog events as JSON
 TDM_PUBLIC_URL=https://  Exact dashboard origin when using a hostname/reverse proxy
-TDM_ALLOWED_HOSTS=a,b     Extra hosts allowed to reach the dashboard (comma-separated)
 ```
 
 Choose **Settings → Appearance** for Graphite (charcoal and brass), Paper (warm light),
@@ -93,13 +92,15 @@ See [ROADMAP.md](ROADMAP.md) for the current operational QoL feature status and 
 
 Docker is the only supported production runtime.
 
-Published images support `linux/amd64` and `linux/arm64`. Run the latest image:
+Published images support `linux/amd64` and `linux/arm64`. Set `TDM_WEB_TOKEN` in your shell,
+then run the latest image:
 
 ```bash
 docker run -d \
   --name twitch-drops-miner-next \
   --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 \
+  -p 8080:8080 \
+  -e TDM_WEB_TOKEN="${TDM_WEB_TOKEN:?Set a dashboard password first}" \
   -v tdm-data:/data \
   ghcr.io/0libote/twitchdropsminer:latest
 ```
@@ -119,18 +120,30 @@ docker compose up -d --build
 
 Open `http://127.0.0.1:8080/`.
 
-On a remote server, `127.0.0.1` refers to the server itself. From your computer, use an SSH
-tunnel (`ssh -L 8080:127.0.0.1:8080 user@server`) and then open the same URL. If you use a
-reverse proxy instead, point it at the server's loopback port and set `TDM_PUBLIC_URL` below.
+On a remote server, `127.0.0.1` refers to the server itself. From another device, open
+`http://SERVER_IP:8080/`. If you use a reverse proxy, point it at the server's published port
+and set `TDM_PUBLIC_URL` below.
+For Compose, put `TDM_PUBLIC_URL=https://miner.example.com` in a `.env` file beside
+`compose.yaml`, then run `docker compose up -d --build` so the value reaches the container.
 
-The Compose configuration publishes only to the host's loopback interface. If you deliberately
-expose it beyond a trusted LAN, add authentication and HTTPS at the reverse proxy; the dashboard
-can control the miner and reveal Twitch account state.
+Compose publishes on all server interfaces by default. Set `TDM_WEB_TOKEN` before exposing the
+dashboard to other devices; it can control the miner and reveal Twitch account state. Set
+`TDM_BIND_ADDRESS=127.0.0.1` if you want access only from the server or through an SSH tunnel.
 
-When accessing the dashboard through a named host or HTTPS reverse proxy, set
+To open the dashboard directly from another device on your LAN, put these values in `.env`
+beside `compose.yaml`, then recreate the container with `docker compose up -d --build`:
+
+```text
+TDM_PUBLISHED_PORT=18766
+TDM_WEB_TOKEN=choose-a-long-password
+```
+
+Open `http://SERVER_LAN_IP:18766/` and sign in as `tdm`.
+
+The dashboard accepts requests addressed to any IP or hostname. When accessing it through an
+HTTPS reverse proxy, set
 `TDM_PUBLIC_URL=https://miner.example.com` to the exact browser origin (scheme, hostname and
-port, with no path). The proxy must preserve the Host header. Direct localhost/IP access works
-without this variable. Dashboard actions require a CSRF token and reject foreign origins;
+port, with no path). Dashboard actions require a CSRF token and reject foreign origins;
 API clients first GET `/api/csrf` and send its `token` as `X-CSRF-Token` on writes. HTTP Basic
 authentication remains controlled by `TDM_WEB_TOKEN`; it does not provide browser session logout.
 

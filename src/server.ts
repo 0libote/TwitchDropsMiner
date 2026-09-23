@@ -2,7 +2,7 @@
  * Port of `webui.py`: the dashboard server on `Bun.serve()` implementing
  * `TwitchGui` for the engine.
  *
- * Same routes, same auth/CSRF/host rules, same snapshot shape (typed as
+ * Same routes, same auth/CSRF rules, same snapshot shape (typed as
  * `DashboardState` from `web/api-types.ts`), same SSE stream. The engine is
  * attached after construction (`attachEngine`), mirroring `ui_factory`.
  *
@@ -725,29 +725,7 @@ export class DashboardServer implements TwitchGui {
 
   // -- HTTP ------------------------------------------------------------------------
 
-  private allowedHosts(): Set<string> {
-    const hosts = new Set(["127.0.0.1", "localhost", "::1"]);
-    const publicUrl = (process.env["TDM_PUBLIC_URL"] ?? "").trim();
-    if (publicUrl) {
-      try {
-        const host = normalizeHostname(new URL(publicUrl).hostname);
-        if (host) hosts.add(host);
-      } catch {
-        // Ignore malformed public URLs (same as Python).
-      }
-    }
-    for (const part of (process.env["TDM_ALLOWED_HOSTS"] ?? "").split(",")) {
-      const host = normalizeHostname(part);
-      if (host) hosts.add(host);
-    }
-    return hosts;
-  }
-
   private checkAuth(req: Request, url: URL): Response | null {
-    const hostname = normalizeHostname(url.hostname);
-    if (!this.allowedHosts().has(hostname)) {
-      return plain(403, "Unrecognised local dashboard host");
-    }
     if (!this.authToken || url.pathname === "/healthz") return null;
     const expected = `Basic ${Buffer.from(`tdm:${this.authToken}`).toString("base64")}`;
     const actual = req.headers.get("Authorization") ?? "";
@@ -762,9 +740,7 @@ export class DashboardServer implements TwitchGui {
     const origin = req.headers.get("Origin");
     if (origin) {
       const publicUrl = (process.env["TDM_PUBLIC_URL"] ?? "").trim().replace(/\/+$/, "");
-      if (publicUrl) {
-        if (origin !== publicUrl) return plain(403, "Cross-origin actions are not allowed");
-      } else if (origin !== `${url.protocol}//${url.host}`) {
+      if (origin !== publicUrl && origin !== `${url.protocol}//${url.host}`) {
         return plain(403, "Cross-origin actions are not allowed");
       }
     }

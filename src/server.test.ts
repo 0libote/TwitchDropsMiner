@@ -1,5 +1,5 @@
 /**
- * Tests for `src/server.ts`: snapshot shape, auth/CSRF/host rules, settings
+ * Tests for `src/server.ts`: snapshot shape, auth/CSRF rules, settings
  * validation, actions, history, login flow and SSE — mostly through direct
  * `handleRequest` calls, plus one live-server pass for SSE and static files.
  */
@@ -238,17 +238,39 @@ describe("dashboard snapshot", () => {
   });
 });
 
-describe("auth, CSRF and host rules", () => {
-  test("unknown hosts are rejected everywhere", async () => {
+describe("auth, CSRF and hosts", () => {
+  test("any hostname can reach the dashboard", async () => {
     const { server } = makeHarness();
     const response = await server.handleRequest(new Request("http://evil.example/"));
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 
   test("IPv6 loopback is accepted despite WHATWG brackets in hostname", async () => {
     const { server } = makeHarness();
     const response = await server.handleRequest(new Request("http://[::1]/healthz"));
     expect(response.status).toBe(200);
+  });
+
+  test("direct server IP addresses are accepted", async () => {
+    const { server } = makeHarness();
+    expect((await server.handleRequest(new Request("http://192.168.1.42:8080/"))).status).toBe(200);
+    expect((await server.handleRequest(new Request("http://203.0.113.42:8080/"))).status).toBe(200);
+    expect((await server.handleRequest(new Request("http://[fd00::42]:8080/"))).status).toBe(200);
+  });
+
+  test("basic authentication still protects every host", async () => {
+    const previousToken = process.env["TDM_WEB_TOKEN"];
+    try {
+      process.env["TDM_WEB_TOKEN"] = "test-secret";
+      const { server } = makeHarness();
+      expect((await server.handleRequest(new Request("http://any.example/"))).status).toBe(401);
+      expect((await server.handleRequest(new Request("http://any.example/", {
+        headers: { Authorization: `Basic ${Buffer.from("tdm:test-secret").toString("base64")}` },
+      }))).status).toBe(200);
+    } finally {
+      if (previousToken === undefined) delete process.env["TDM_WEB_TOKEN"];
+      else process.env["TDM_WEB_TOKEN"] = previousToken;
+    }
   });
 
   test("writes require a CSRF token", async () => {
@@ -268,6 +290,31 @@ describe("auth, CSRF and host rules", () => {
       }),
     );
     expect(response.status).toBe(403);
+  });
+
+  test("same-origin IP actions work when a public URL is configured", async () => {
+    const previousPublic = process.env["TDM_PUBLIC_URL"];
+    try {
+      process.env["TDM_PUBLIC_URL"] = "https://miner.example.com";
+      const { server } = makeHarness();
+      const token = await csrfToken(server);
+      const response = await server.handleRequest(new Request("http://192.168.1.42:8080/api/actions/pause", {
+        method: "POST",
+        headers: { "X-CSRF-Token": token, Origin: "http://192.168.1.42:8080" },
+      }));
+      expect(response.status).toBe(200);
+      expect((await server.handleRequest(new Request("http://127.0.0.1:8080/api/actions/pause", {
+        method: "POST",
+        headers: { "X-CSRF-Token": token, Origin: "https://miner.example.com" },
+      }))).status).toBe(200);
+      expect((await server.handleRequest(new Request("http://192.168.1.42:8080/api/actions/pause", {
+        method: "POST",
+        headers: { "X-CSRF-Token": token, Origin: "https://evil.example" },
+      }))).status).toBe(403);
+    } finally {
+      if (previousPublic === undefined) delete process.env["TDM_PUBLIC_URL"];
+      else process.env["TDM_PUBLIC_URL"] = previousPublic;
+    }
   });
 });
 

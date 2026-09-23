@@ -142,6 +142,13 @@ jobs:
             docker logs tdm-next-smoke
             exit 1
           fi
+          arbitrary_host=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --header 'Host: arbitrary.example' --user "tdm:ci-smoke-token" http://127.0.0.1:18766/)
+          if [ "$arbitrary_host" != "200" ]; then
+            echo "Expected the dashboard to accept arbitrary Host headers, got $arbitrary_host"
+            docker logs tdm-next-smoke
+            exit 1
+          fi
           # A persistent lock file must not prevent the same container restarting.
           docker restart tdm-next-smoke
           for attempt in {1..30}; do

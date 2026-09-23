@@ -630,27 +630,8 @@ class WebUI:
         finally:
             await self._runner.cleanup()
 
-    def _allowed_hosts(self) -> set[str]:
-        hosts: set[str] = {"127.0.0.1", "localhost", "::1"}
-        if public_url := os.environ.get("TDM_PUBLIC_URL", "").strip():
-            try:
-                if ph := URL(public_url).host:
-                    hosts.add(ph)
-            except Exception:
-                pass
-        if extra := os.environ.get("TDM_ALLOWED_HOSTS", "").strip():
-            for part in extra.split(","):
-                part = part.strip().lower()
-                if part:
-                    hosts.add(part)
-        return hosts
-
     @web.middleware
     async def _authentication(self, request: web.Request, handler: Any) -> web.StreamResponse:
-        hostname = (request.url.host or "").lower()
-        allowed = hostname in self._allowed_hosts()
-        if not allowed:
-            raise web.HTTPForbidden(text="Unrecognised local dashboard host")
         if not self.auth_token or request.path == "/healthz":
             return await handler(request)
         expected = "Basic " + base64.b64encode(f"tdm:{self.auth_token}".encode()).decode()
@@ -668,15 +649,9 @@ class WebUI:
             origin = request.headers.get("Origin")
             if origin:
                 public = os.environ.get("TDM_PUBLIC_URL", "").strip().rstrip("/")
-                if public:
-                    if origin != public:
-                        raise web.HTTPForbidden(text="Cross-origin actions are not allowed")
-                else:
-                    # Without an explicit public origin, only allow same-host origins that
-                    # have already passed the strict Host allow-list.
-                    expected = f"{request.scheme}://{request.host}"
-                    if origin != expected:
-                        raise web.HTTPForbidden(text="Cross-origin actions are not allowed")
+                expected = f"{request.scheme}://{request.host}"
+                if origin != public and origin != expected:
+                    raise web.HTTPForbidden(text="Cross-origin actions are not allowed")
             # Double-submit: header must match either cookie or stored token (backward compat with tests).
             presented = request.headers.get("X-CSRF-Token", "")
             cookie_token = request.cookies.get("__Host-csrf", "")

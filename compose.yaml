@@ -8,8 +8,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    environment:
+      TDM_PUBLIC_URL: ${TDM_PUBLIC_URL:-}
+      TDM_WEB_TOKEN: ${TDM_WEB_TOKEN:-}
     ports:
-      - "127.0.0.1:8080:8080"
+      - "${TDM_BIND_ADDRESS:-0.0.0.0}:${TDM_PUBLISHED_PORT:-8080}:8080"
     volumes:
       - tdm-data:/data
     tmpfs:

@@ -4,6 +4,9 @@ Status: Implemented in `chore/hardening-p0-p3` (PR #4), then corrected and exten
 follow-up audit. Line references were removed because they drift; each item names the behavior
 and the module instead.
 
+Later deployment changes removed the dashboard Host allow-list in both runtimes. The entries
+below record what PR #4 implemented at the time; authentication and CSRF checks still apply.
+
 ## P0 — Security / data-loss
 - [x] `constants.py` / `twitch.py` — `cookies.jar` `chmod 0o600`, `os.umask(0o077)`, `DATA_DIR 0o700`
 - [x] `webui.py` — per-session CSRF `__Host-csrf` double-submit + rotation on logout
