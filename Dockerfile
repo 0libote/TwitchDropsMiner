@@ -25,4 +25,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD ["bun", "--eval", "const port = process.env.TDM_PORT ?? '8080'; const res = await fetch(`http://127.0.0.1:${port}/healthz`); if (!res.ok) process.exit(1)"]
 
-CMD ["bun", "src/main.ts", "-vv"]
+CMD ["flock", "-n", "-F", "/data/lock.file", "bun", "src/main.ts", "-vv"]

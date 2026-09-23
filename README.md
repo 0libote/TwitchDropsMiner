@@ -107,6 +107,10 @@ docker run -d \
 The `latest` image follows every successful build of `main`. Version tags also publish a matching
 immutable container tag alongside `latest`.
 
+The current container uses Twitch's smart TV client for device authorization. Twitch currently
+rejects new device authorizations for the older Android client. After updating, you may need to
+activate the miner once more; settings and reward history remain in the data volume.
+
 To build directly from a clone instead:
 
 ```bash
@@ -114,6 +118,10 @@ docker compose up -d --build
 ```
 
 Open `http://127.0.0.1:8080/`.
+
+On a remote server, `127.0.0.1` refers to the server itself. From your computer, use an SSH
+tunnel (`ssh -L 8080:127.0.0.1:8080 user@server`) and then open the same URL. If you use a
+reverse proxy instead, point it at the server's loopback port and set `TDM_PUBLIC_URL` below.
 
 The Compose configuration publishes only to the host's loopback interface. If you deliberately
 expose it beyond a trusted LAN, add authentication and HTTPS at the reverse proxy; the dashboard

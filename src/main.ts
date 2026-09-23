@@ -1,18 +1,18 @@
 /**
- * Port of `main.py`: CLI, single-instance lock, signal handling and the
- * run-until-closed lifecycle for the Bun dashboard + engine.
+ * Port of `main.py`: CLI, signal handling and the run-until-closed lifecycle
+ * for the Bun dashboard + engine. Docker holds the data-directory lock.
  *
  * Flags mirror the Python CLI (`--host/--port/--no-browser/--log/-v`,
  * plus hidden `--dump/--debug-ws/--debug-gql`). `--tray` is gone with the
  * desktop builds. `TDM_*` environment variables behave identically.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { AsyncEvent } from "./async.ts";
 import { Twitch } from "./engine.ts";
 import { CaptchaRequired, ExitRequest, LoginException } from "./errors.ts";
 import { DashboardServer } from "./server.ts";
 import { Settings } from "./settings.ts";
+import { CLIENT_TYPES } from "./twitchProtocol.ts";
 import { FORK_VERSION, UPSTREAM_VERSION } from "./version.ts";
 
 interface Cli {
@@ -63,26 +63,6 @@ function parseArgs(argv: string[]): Cli {
   return cli;
 }
 
-/** Single instance per data dir (PID-checked; Python used OS file locks). */
-function takeLock(lockPath: string): void {
-  try {
-    const raw = readFileSync(lockPath, "utf8").trim();
-    const pid = Number(raw);
-    if (Number.isInteger(pid) && pid > 0) {
-      try {
-        process.kill(pid, 0);
-        console.error("Twitch Drops Miner is already running for this data directory.");
-        process.exit(1);
-      } catch {
-        // Stale lock: process is gone, take over below.
-      }
-    }
-  } catch {
-    // No lock file yet.
-  }
-  writeFileSync(lockPath, String(process.pid), "utf8");
-}
-
 function openDashboard(url: string): void {
   try {
     const command =
@@ -102,7 +82,6 @@ async function main(): Promise<number> {
     // Non-POSIX platforms.
   }
   const dataDir = process.env["TDM_DATA_DIR"] ?? process.cwd();
-  takeLock(`${dataDir}/lock.file`);
   const settings = new Settings(`${dataDir}/settings.json`, {
     log: cli.log,
     dump: cli.dump,
@@ -119,7 +98,7 @@ async function main(): Promise<number> {
     openBrowser: !cli.noBrowser,
     closeEvent,
   });
-  const engine = new Twitch({ dataDir, settings, gui: server, closeEvent });
+  const engine = new Twitch({ dataDir, settings, gui: server, closeEvent, clientType: CLIENT_TYPES.SMARTBOX });
   server.attachEngine(engine);
   const onSignal = (): void => server.close();
   process.on("SIGINT", onSignal);
