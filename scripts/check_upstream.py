@@ -64,8 +64,9 @@ def report(upstream_ref: str) -> tuple[bool, str]:
             "## Review procedure",
             "",
             "1. Merge or cherry-pick the upstream changes into a review branch.",
-            "2. Run the headless tests and verify Twitch login, inventory, claiming, and watching.",
-            "3. Update `.upstream-base` to the reviewed upstream SHA only after those checks pass.",
+            "2. Compare GQL persisted-query hashes in upstream `constants.py` with both `constants.py` and `src/twitchProtocol.ts`.",
+            "3. Run the headless tests and verify Twitch login, inventory, claiming, and watching.",
+            "4. Update `.upstream-base` to the reviewed upstream SHA only after those checks pass.",
         )
     )
     return True, "\n".join(lines) + "\n"

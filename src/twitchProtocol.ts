@@ -127,7 +127,7 @@ export const GQL_QUERIES: Record<string, GqlQuery> = {
     channelID: UNSET as unknown,
     channelLogin: "",
   }),
-  Campaigns: q("ViewerDropsDashboard", "d9cae7761dafab85908c85e6683cb4201b449e66ac3bb5e894f15ff12aeafaa7", {
+  Campaigns: q("ViewerDropsDashboard", "c16bb890cc8ce7647a96ee69cd313d423a378a3dedadf630a1017cde18975feb", {
     fetchRewardCampaigns: false,
   }),
   CampaignDetails: q("DropCampaignDetails", "039277bf98f3130929262cc7c6efd9c141ca3749cb6dca442fc8ead9a53f77c1", {

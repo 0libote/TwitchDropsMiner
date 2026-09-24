@@ -521,7 +521,7 @@ export class DashboardServer implements TwitchGui {
     const server = Bun.serve({
       hostname: this.host,
       port: this.port,
-      fetch: (req) => this.handleRequest(req),
+      fetch: (req, server) => this.handleRequest(req, server),
     });
     this.server = server;
     this.clockStopped = false;
@@ -769,13 +769,14 @@ export class DashboardServer implements TwitchGui {
   }
 
   /** Router entry point (also used directly by tests). */
-  async handleRequest(req: Request): Promise<Response> {
+  async handleRequest(req: Request, server?: ReturnType<typeof Bun.serve>): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
     const auth = this.checkAuth(req, url);
     if (auth) return this.withSecurity(req, auth);
     const csrf = this.checkCsrf(req, url);
     if (csrf) return this.withSecurity(req, csrf);
+    if (server && req.method === "GET" && path === "/api/events") server.timeout(req, 0);
     try {
       return this.withSecurity(req, await this.dispatch(req, url, path));
     } catch (error) {
@@ -824,7 +825,7 @@ export class DashboardServer implements TwitchGui {
     const sockets = engine.websocketSockets;
     const ready = sockets.length > 0 && sockets.every((s) => s.connected);
     const userId = engine.auth.userId;
-    const ok = Boolean(userId) && ready;
+    const ok = Boolean(userId) && ready && this.activityState !== "error";
     return Response.json({ status: ok ? "ready" : "starting" }, { status: ok ? 200 : 503 });
   }
 

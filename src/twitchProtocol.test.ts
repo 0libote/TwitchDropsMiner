@@ -10,6 +10,7 @@ import { CLIENT_TYPES, EngineState, GQL_QUERIES, INTERVALS, LIMITS, PriorityMode
 describe("GqlQuery", () => {
   test("known wire hashes are pinned", () => {
     expect(GQL_QUERIES["ClaimDrop"]!.sha256Hash).toBe("a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930");
+    expect(GQL_QUERIES["Campaigns"]!.sha256Hash).toBe("c16bb890cc8ce7647a96ee69cd313d423a378a3dedadf630a1017cde18975feb");
     expect(GQL_QUERIES["ClaimDrop"]!.operationName).toBe("DropsPage_ClaimDropRewards");
     expect(Object.keys(GQL_QUERIES)).toHaveLength(15);
   });

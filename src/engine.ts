@@ -868,7 +868,7 @@ export class Twitch {
       const original = parsed;
       const list = Array.isArray(parsed) ? parsed : [parsed];
       let forceRetry = false;
-      let completed = false;
+      let retryDelay = delay;
       for (const item of list) {
         if ("errors" in item && Array.isArray(item["errors"])) {
           let itemHandled = false;
@@ -877,6 +877,7 @@ export class Twitch {
             const message = errorDict["message"] as string;
             if (singleRetry && (message === "service error" || message === "PersistedQueryNotFound")) {
               singleRetry = false;
+              retryDelay = Math.max(delay, 5);
               forceRetry = true;
               itemHandled = true;
               break;
@@ -888,7 +889,7 @@ export class Twitch {
               target[path[path.length - 1]!] = null;
               itemHandled = true;
               break;
-            } else if (message === "service timeout" || message === "service unavailable" || message === "context deadline exceeded") {
+            } else if (message === "service timeout" || message === "request cancelled" || message === "service unavailable" || message === "context deadline exceeded") {
               forceRetry = true;
               itemHandled = true;
               break;
@@ -900,12 +901,9 @@ export class Twitch {
         }
       }
       if (!forceRetry) {
-        completed = true;
         return original as Record<string, unknown> | Array<Record<string, unknown>>;
       }
-      void completed;
-      // Single-retry overwrite for very short delays, like Python.
-      await sleep(Math.max(delay, forceRetry && delay < 5 && !singleRetry ? delay : delay) * 1000);
+      await sleep(retryDelay * 1000);
     }
   }
 

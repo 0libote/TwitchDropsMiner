@@ -134,6 +134,10 @@ async function main(): Promise<number> {
     ]);
   } catch (error) {
     exitStatus = 1;
+    if (!(error instanceof ExitRequest)) {
+      server.notifier.set_activity("error");
+      server.status.update("Miner needs attention; check Activity or container logs");
+    }
     if (error instanceof CaptchaRequired) {
       server.preventClose();
       console.error(translateCaptcha());

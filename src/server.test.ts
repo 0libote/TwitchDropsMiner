@@ -374,6 +374,8 @@ describe("operational endpoints", () => {
     engine.authUser = 5;
     engine.websocketSockets.push({ connected: true });
     expect((await get(server, "/readyz")).status).toBe(200);
+    server.notifier.set_activity("error");
+    expect((await get(server, "/readyz")).status).toBe(503);
     const metrics = await (await get(server, "/metrics")).text();
     expect(metrics).toContain("tdm_uptime_seconds");
     const diagnostics = (await (await get(server, "/api/diagnostics")).json()) as Record<string, unknown>;
@@ -434,9 +436,21 @@ describe("live server", () => {
       const text = new TextDecoder().decode(first.value);
       expect(text.startsWith("data:")).toBe(true);
       expect((JSON.parse(text.slice("data:".length)) as { revision: number }).revision).toBe(0);
+      // Bun closes quiet streams after 10 seconds unless the SSE request opts out.
+      await new Promise((resolve) => setTimeout(resolve, 11_000));
+      server.status.update("still streaming");
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const second = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("SSE update timed out")), 5_000);
+        }),
+      ]).finally(() => clearTimeout(timer));
+      expect(second.done).toBe(false);
+      expect(new TextDecoder().decode(second.value)).toContain("still streaming");
       await reader.cancel();
     } finally {
       server.stop();
     }
-  });
+  }, { timeout: 20_000 });
 });
