@@ -107,6 +107,8 @@ const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/web_st
     assert.match(await page.locator('#priority-rows').textContent(), /ARC Raiders/);
     await page.locator('[data-discard-settings]').click();
     await goto('/campaigns');
+    assert.equal(await page.locator('.campaign-row').count(), fixture.campaigns.length, 'The initial campaign view should expose the full inventory');
+    assert.match(await page.locator('.campaign-row').filter({hasText: 'Creator Celebration'}).textContent(), /Account link needed/);
     await page.locator('#campaign-search').fill('VALORANT');
     assert.equal(await page.locator('.campaign-row').count(), 1);
     await page.locator('.campaign-name a').focus();

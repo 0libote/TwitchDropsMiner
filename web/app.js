@@ -6,7 +6,10 @@ let state = null;
 let activeRoute = null;
 let connected = false;
 let toastTimer = null;
-let campaignFilter = "available";
+// Show the inventory on first visit, including active campaigns that need a
+// game account link. The Available filter is narrower and can look empty when
+// Twitch has campaigns but none are currently eligible to mine.
+let campaignFilter = "all";
 let campaignQuery = "";
 let settingsDraft = null;
 let settingsDirty = false;

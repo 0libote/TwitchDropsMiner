@@ -435,6 +435,7 @@ describe("fetchInventory", () => {
     }) as FetchImpl;
     await engine.fetchInventory();
     expect(engine.inventory).toHaveLength(1);
+    expect(engine.stats.lastInventoryAt).not.toBeNull();
     expect(engine.inventory[0]!.id).toBe("c1");
     expect(engine.inventory[0]!.getDrop("c1-d1")).toBeDefined();
     expect(engine.history!.query("5").total).toBe(1);

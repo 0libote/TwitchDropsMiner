@@ -1039,6 +1039,7 @@ export class Twitch {
     await Promise.all(
       campaigns.map((campaign) => this.gui.inv.addCampaign(campaign).then(() => updateAdding())),
     );
+    this.stats.lastInventoryAt = new Date().toISOString();
     this.mntTriggers.push(...[...switchTriggers].sort((a, b) => a - b));
     const now = Date.now();
     while (this.mntTriggers.length > 0 && this.mntTriggers[0]! <= now) this.mntTriggers.shift();
