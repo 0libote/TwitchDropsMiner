@@ -2,6 +2,22 @@
 
 Project-specific guidance for AI coding agents.
 
+## Dashboard build
+
+- UI source is `dashboard/` (React + Astryx): entry `dashboard/app.tsx`, routes in
+  `dashboard/routes/`, shell/page furniture in `dashboard/shell/`, state + routing in
+  `dashboard/core/`.
+- `bun run build` compiles it to `web/app.js` + `web/app.css`. **Both are committed and served
+  as plain static files — rebuild and commit them after every UI change.** Docker rebuilds the
+  bundle too, so a stale commit still ships correct code.
+- `bun run theme:build` recompiles the four appearances from `dashboard/themes/*.theme.ts`.
+  The generated `.css`, `.js` and `.d.ts` next to them are committed as well; never edit them by
+  hand.
+- `web/theme.js` must stay a standalone classic script: theme tests run it in a VM, and it paints
+  `data-theme` / `data-astryx-theme` on `<html>` before any stylesheet loads.
+- Verify with `bun run typecheck`, `bun test`, `bun tests/test_web_theme.cjs`, and
+  `bun run test:browser` against a running `bun run preview`.
+
 <!-- ASTRYX:START -->
 Astryx v0.6.3 · 164 components
 CLI: run every command as `bunx astryx <cmd>` (shown below as `astryx ...`).

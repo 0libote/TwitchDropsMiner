@@ -79,19 +79,30 @@ body {
   padding-block-end: var(--spacing-1);
 }
 
+/* Astryx Link renders its children inside a block-level span, so a trailing
+   arrow has to be inline or it drops onto its own line. */
 .more-link,
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-1);
+.back-link,
+.more-rewards {
+  display: inline;
   white-space: nowrap;
   text-decoration: none;
 }
 
 .more-link svg,
-.back-link svg {
+.back-link svg,
+.more-rewards svg,
+.now-status a svg {
+  display: inline-block;
   inline-size: 14px;
   block-size: 14px;
+  margin-inline-start: var(--spacing-1);
+  vertical-align: -2px;
+}
+
+.now-status a {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .back-link {
@@ -340,17 +351,8 @@ body {
 }
 
 .more-rewards {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-1);
   margin-block-start: var(--spacing-3);
-  color: var(--color-text-secondary);
   font-size: var(--text-supporting-size);
-  text-decoration: none;
-}
-
-.more-rewards:hover {
-  color: var(--color-text-accent);
 }
 
 .session-rail {

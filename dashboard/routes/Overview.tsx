@@ -132,7 +132,7 @@ export function Overview() {
         />
 
         <div className="overview-grid">
-          <Card className="now-card">
+          <Card className="now-card" padding={0}>
             <Stack gap={5}>
               <Stack direction="horizontal" justify="between" align="center" gap={3} className="now-status">
                 <Stack direction="horizontal" gap={2} align="center">

@@ -186,18 +186,31 @@ for every hostname requested by this container; an exact allowlist entry is the 
 ## Development
 
 The miner is TypeScript on Bun: engine, dashboard server and lifecycle live
-under `src/`, with plain HTML, CSS, and JavaScript (server-sent events) for
-the UI. Docker (`oven/bun` image) is the only supported production runtime.
-SQLite is built into Bun and needs no database service. Python remains in the
-repo as the upstream-tracking reference implementation (see below).
+under `src/`. The dashboard UI is React with Meta's
+[Astryx](https://astryx.atmeta.com) design system: components live in
+`dashboard/`, and `bun run build` compiles them into the static files the
+server serves from `web/` (`app.js`, `app.css`). Those two files are
+committed, so a fresh checkout runs without a build step; Docker rebuilds
+them anyway so an image can never ship a stale bundle. SQLite is built into
+Bun and needs no database service. Python remains in the repo as the
+upstream-tracking reference implementation (see below).
 
 Run the checks:
 
 ```bash
-bun run typecheck   # tsc --noEmit over src/, web/api-types.ts, scripts, tests
-bun test            # Bun-native unit tests (src/*.test.ts, 125 tests)
-bun run build       # Bun.build bundle check (output is gitignored web/dist/)
+bun run typecheck   # tsc --noEmit over src/, dashboard/, web/api-types.ts, scripts, tests
+bun test            # Bun-native unit tests (src/*.test.ts)
+bun run build       # dashboard/ -> web/app.js + web/app.css (commit the result)
 bun audit           # JS supply-chain audit (also run in CI)
+```
+
+Restyle the dashboard with the Astryx CLI after editing a theme or looking
+for a component:
+
+```bash
+bunx astryx theme build dashboard/themes/*.theme.ts   # or: bun run theme:build
+bunx astryx component <Name>                         # props and examples
+bunx astryx template <name> --skeleton               # page/block reference code
 ```
 
 Run the miner from source (development only; production uses Docker):
