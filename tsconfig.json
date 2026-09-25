@@ -13,7 +13,17 @@
     "checkJs": false,
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src/**/*.ts", "web/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "web/**/*.js"]
+  "include": [
+    "src/**/*.ts",
+    "web/**/*.ts",
+    "web/**/*.js",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "dashboard/**/*.ts",
+    "dashboard/**/*.tsx"
+  ]
 }

@@ -1,25 +1,26 @@
 /**
- * Verify the dashboard bundles cleanly with Bun's bundler.
+ * Build the dashboard bundle.
  *
- * This is a verification/build step only: production still serves `web/`
- * directly via `webui.py` (`add_static("/assets", WEB_ROOT)`). The output in
- * `web/dist/` is gitignored and exists to catch syntax errors, measure
- * minified sizes, and unblock a future switch to serving hashed bundles.
+ * The React source lives in `dashboard/`; the server (and both preview
+ * servers) keep serving the plain static files in `web/`, so this script
+ * compiles `dashboard/app.tsx` down to `web/app.js` + `web/app.css`.
+ * Commit both outputs — a fresh checkout must run without a build step.
  *
- * Run: `bun run build`
+ * Run: `bun run build` (after `bun run theme:build` when a theme changed)
  */
-import { mkdir } from "node:fs/promises";
+import {rm} from "node:fs/promises";
 
-const outdir = new URL("../web/dist/", import.meta.url).pathname;
+const outdir = new URL("../web/", import.meta.url).pathname;
 
-await mkdir(outdir, { recursive: true });
+// The bundle replaces both artefacts; clear stale hashed copies first.
+await rm(new URL("../web/dist/", import.meta.url).pathname, {recursive: true, force: true});
 
 const result = await Bun.build({
-  entrypoints: ["web/app.js", "web/theme.js", "web/app.css"],
+  entrypoints: ["dashboard/app.tsx"],
   outdir,
-  minify: true,
-  sourcemap: "external",
   target: "browser",
+  minify: true,
+  sourcemap: "none",
   define: {
     "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production"),
   },
@@ -33,7 +34,7 @@ if (!result.success) {
 
 for (const output of result.outputs) {
   const size = (await output.arrayBuffer()).byteLength;
-  console.log(`bundled ${output.path.replace(outdir, "web/dist/")} (${size} bytes)`);
+  console.log(`bundled ${output.path.replace(outdir, "web/")} (${size} bytes)`);
 }
 
-console.log(`OK: ${result.outputs.length} bundle outputs in web/dist/ (gitignored)`);
+console.log(`OK: ${result.outputs.length} outputs written to web/`);

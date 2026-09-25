@@ -81,10 +81,11 @@ const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/web_st
     }
     await page.locator('#quick-theme').selectOption('evergreen');
     assert.equal(await page.locator('[data-theme-choice="evergreen"]').getAttribute('aria-pressed'), 'true');
-    await page.locator('[data-setting="trayNotifications"]').uncheck();
+    // Astryx Switch puts data-* on the field wrapper; assert on its checkbox.
+    await page.locator('[data-setting="trayNotifications"] input').uncheck();
     await page.locator('[data-theme-choice="paper"]').click();
     await emit(fixture);
-    assert.equal(await page.locator('[data-setting="trayNotifications"]').isChecked(), false, 'Theme/live update must preserve unsaved settings');
+    assert.equal(await page.locator('[data-setting="trayNotifications"] input').isChecked(), false, 'Theme/live update must preserve unsaved settings');
     await page.locator('[data-save-settings]').click();
     await page.waitForFunction(() => document.querySelector('#save-bar').classList.contains('hidden'));
     assert.ok(requests.some(request => request.url.endsWith('/api/settings') && request.body.trayNotifications === false));
@@ -109,7 +110,7 @@ const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/web_st
     await goto('/campaigns');
     assert.equal(await page.locator('.campaign-row').count(), fixture.campaigns.length, 'The initial campaign view should expose the full inventory');
     assert.match(await page.locator('.campaign-row').filter({hasText: 'Creator Celebration'}).textContent(), /Account link needed/);
-    await page.locator('#campaign-search').fill('VALORANT');
+    await page.locator('[data-testid="campaign-search"]').fill('VALORANT');
     assert.equal(await page.locator('.campaign-row').count(), 1);
     await page.locator('.campaign-name a').focus();
     await emit({...fixture, revision: 101});
@@ -127,7 +128,7 @@ const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/web_st
     const historyCalls = requests.filter(item => item.url.includes('/api/history')).length;
     await emit({...fixture, revision: 103});
     assert.equal(requests.filter(item => item.url.includes('/api/history')).length, historyCalls);
-    await page.locator('#history-query').fill('reward');
+    await page.locator('[data-testid="history-query"]').fill('reward');
     await page.locator('#history-filters button').click();
     await page.waitForSelector('.history-row');
     assert.ok(requests.some(item => item.url.includes('q=reward')));
@@ -142,7 +143,7 @@ const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/web_st
 
     await emit({...fixture, login: {userId: 2002}, revision: 104});
     await page.waitForSelector('.history-row');
-    assert.equal(await page.locator('#history-query').inputValue(), '', 'Account changes clear history filters');
+    assert.equal(await page.locator('[data-testid="history-query"]').inputValue(), '', 'Account changes clear history filters');
     assert.equal(await page.locator('#history-game').inputValue(), '');
     await emit({...fixture, canLogout: false, login: {}, revision: 105});
     assert.equal(await page.locator('#history-results').count(), 0, 'Sign-out removes previous account history');

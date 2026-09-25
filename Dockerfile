@@ -8,7 +8,9 @@ ENV TDM_DATA_DIR=/data \
 WORKDIR /app
 
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production --ignore-scripts \
+# Build-time packages compile dashboard/ into web/ below and are pruned
+# afterwards, so the runtime image only carries what the miner needs.
+RUN bun install --frozen-lockfile --ignore-scripts \
     && useradd --create-home --uid 10001 miner \
     && mkdir -p /data /home/miner \
     && chown miner:miner /data /home/miner
@@ -17,6 +19,13 @@ ENV HOME=/home/miner
 
 COPY --chown=miner:miner src ./src
 COPY --chown=miner:miner web ./web
+COPY --chown=miner:miner dashboard ./dashboard
+COPY --chown=miner:miner scripts ./scripts
+
+# The server hands out plain static files, so the React bundle is rebuilt here
+# from dashboard/ instead of trusting whatever copy came with the context.
+RUN bun run build \
+    && bun install --frozen-lockfile --production --ignore-scripts
 
 USER miner
 VOLUME ["/data"]

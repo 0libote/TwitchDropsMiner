@@ -10,6 +10,8 @@ const systemTheme = matchMedia("(prefers-color-scheme: dark)");
 function applyTheme() {
   const theme = themePreference === "system" ? (systemTheme.matches ? "graphite" : "paper") : themePreference;
   document.documentElement.dataset.theme = theme;
+  // Astryx scopes its token CSS by this attribute; keep it in step with data-theme.
+  document.documentElement.dataset.astryxTheme = theme;
   document.querySelector('meta[name="theme-color"]').content = {graphite: "#17181b", paper: "#f5f3ee", midnight: "#111925", evergreen: "#17221f"}[theme];
 }
 applyTheme();

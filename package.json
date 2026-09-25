@@ -9,13 +9,21 @@
     "test:browser": "bun tests/test_web_ui.cjs",
     "typecheck": "tsc --noEmit",
     "build": "bun scripts/build-web.ts",
+    "theme:build": "astryx theme build dashboard/themes/graphite.theme.ts dashboard/themes/paper.theme.ts dashboard/themes/midnight.theme.ts dashboard/themes/evergreen.theme.ts",
     "preview": "bun scripts/preview-web.ts",
     "preview:py": "python scripts/preview_web.py",
     "audit": "bun audit"
   },
   "devDependencies": {
+    "@astryxdesign/cli": "^0.6.3",
+    "@astryxdesign/core": "^0.6.3",
+    "@stylexjs/stylex": "^0.19.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "bun-types": "1.4.2",
     "playwright": "1.62.1",
+    "react": "^19",
+    "react-dom": "^19",
     "typescript": "5.9.2"
   }
 }

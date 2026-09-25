@@ -215,6 +215,7 @@ export interface HistorySummary {
   games: HistorySummaryGame[];
   coverage: string;
   lastSyncedAt: string | null;
+  dailyClaims?: Array<{date: string; count: number | string}>;
 }
 
 export interface HistoryResponse {

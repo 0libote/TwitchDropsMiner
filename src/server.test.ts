@@ -427,9 +427,9 @@ describe("live server", () => {
     try {
       const port = server.boundPort!;
       const app = await (await fetch(`http://127.0.0.1:${port}/assets/app.js`)).text();
-      expect(app).toContain("renderRoute");
+      expect(app).toContain("Twitch Drops Miner");
       const index = await (await fetch(`http://127.0.0.1:${port}/campaigns/abc`)).text();
-      expect(index).toContain('id="app-shell"');
+      expect(index).toContain('id="root"');
       const events = await fetch(`http://127.0.0.1:${port}/api/events`);
       const reader = events.body!.getReader();
       const first = await reader.read();
