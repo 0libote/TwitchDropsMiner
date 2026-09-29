@@ -47,3 +47,12 @@ MORE CLI:
   swizzle <Name>     eject component source for deep customization
   upgrade --apply    run after any Astryx or integration dependency bump
 <!-- ASTRYX:END -->
+
+## Bun-first runtime guidance
+
+- The TypeScript implementation is Bun-native. Prefer Bun APIs before adding Node-oriented helper packages.
+- Keep using `Bun.serve()`, `Bun.file()`, `Bun.write()`, `Bun.build()`, `bun:sqlite`, `bun:test`, Bun WebSockets, and Bun cookie/crypto APIs where they fit.
+- Before adding a JavaScript dependency, check whether Bun or a standard Web API already provides the capability.
+- Do not mechanically replace compatible `node:` filesystem/path primitives when they express the operation more clearly or preserve Python compatibility semantics.
+- Keep Python reference files and parity fixtures when they are needed to prove compatibility with upstream; Bun-first does not mean deleting useful cross-runtime verification.
+- Keep `packageManager`, Docker, CI, and Bun type versions aligned when changing the Bun version.
