@@ -117,6 +117,10 @@ const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/web_st
     assert.equal(await page.locator('.campaign-name a').evaluate(el => el === document.activeElement), true);
     await page.locator('.campaign-name a').click();
     assert.match(page.url(), /campaigns\/campaign-2$/);
+    // SPA navigation intentionally focuses the main view on the next animation frame.
+    // Wait for that accessibility focus handoff before testing that live updates preserve
+    // focus on an action inside the campaign detail.
+    await page.waitForFunction(() => document.getElementById('view') === document.activeElement);
 
     await page.locator('[data-preference="exclude"]').focus();
     await emit({...fixture, revision: 102});
