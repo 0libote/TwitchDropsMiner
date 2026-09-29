@@ -1,7 +1,7 @@
 /**
  * Bun-native read-only dashboard preview.
  *
- * Mirrors `scripts/preview_web.py` (which remains the CI-canonical preview)
+ * Mirrors `scripts/preview_web.py` while serving as the CI browser preview
  * using `Bun.serve()` + `Bun.file()` instead of `http.server`. Loopback-only,
  * no Twitch connection, fictional fixtures only. Writes are rejected with 409
  * so browser suites can verify read-only behavior.
