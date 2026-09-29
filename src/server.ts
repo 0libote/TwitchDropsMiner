@@ -745,7 +745,7 @@ export class DashboardServer implements TwitchGui {
       }
     }
     const presented = req.headers.get("X-CSRF-Token") ?? "";
-    const cookieToken = parseCookies(req.headers.get("Cookie") ?? "")[CSRF_COOKIE] ?? "";
+    const cookieToken = new Bun.CookieMap(req.headers.get("Cookie") ?? "").get(CSRF_COOKIE) ?? "";
     const expected = cookieToken || this.csrfToken;
     const matches = (a: string, b: string): boolean =>
       a.length > 0 && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -1166,16 +1166,6 @@ function file(path: string, contentType: string): Response {
 function randomToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return Buffer.from(bytes).toString("base64url");
-}
-
-function parseCookies(header: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const part of header.split(";")) {
-    const index = part.indexOf("=");
-    if (index <= 0) continue;
-    out[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
-  }
-  return out;
 }
 
 function safeHostname(url: string): string | null {

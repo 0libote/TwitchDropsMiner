@@ -76,11 +76,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-      - run: pip install -r requirements-headless.txt
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2 # pinned to match packageManager in package.json
@@ -89,7 +84,7 @@ jobs:
       - run: bunx --package playwright@1.62.1 playwright install --with-deps chromium
       - name: Verify dashboard behavior and responsive layouts
         run: |
-          python scripts/preview_web.py --port 8095 > /tmp/tdm-preview.log 2>&1 &
+          bun scripts/preview-web.ts --port 8095 > /tmp/tdm-preview.log 2>&1 &
           preview_pid=$!
           trap 'kill "$preview_pid"' EXIT
           for attempt in {1..30}; do
